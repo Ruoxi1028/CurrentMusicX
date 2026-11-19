@@ -10,7 +10,7 @@ import io.github.currencortex.music.data.song.MusicSource
 import io.github.currencortex.music.data.song.Song
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.net.InetSocketAddress
+import java.io.InputStream
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.UUID
@@ -321,9 +321,10 @@ class BodianRepository(
     /** The car protocol sends JSON bodies on GET; OkHttp refuses that, so use a raw TLS request. */
     private fun getWithBody(pathAndQuery: String, headers: Map<String, String>, body: String): String {
         require(pathAndQuery.startsWith("/") && !pathAndQuery.contains("//"))
-        val socket = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket() as SSLSocket
+        val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+        // createSocket(host, port) also seeds SNI, which some CDN edges require.
+        val socket = factory.createSocket(API_HOST, 443) as SSLSocket
         try {
-            socket.connect(InetSocketAddress(API_HOST, 443), 15_000)
             socket.soTimeout = 30_000
             val parameters = socket.sslParameters
             parameters.endpointIdentificationAlgorithm = "HTTPS"
@@ -347,10 +348,87 @@ class BodianRepository(
                 output.write(bodyBytes)
                 output.flush()
             }
-            return parseResponse(socket.inputStream.readBytes())
+            return readResponse(socket.inputStream)
         } finally {
             runCatching { socket.close() }
         }
+    }
+
+    /** Reads exactly the framed body instead of waiting for the peer to close the socket. */
+    private fun readResponse(input: InputStream): String {
+        val headerBytes = readHeaderBytes(input)
+        val head = String(headerBytes, Charsets.ISO_8859_1).trimEnd('\r', '\n')
+        val status = head.lineSequence().firstOrNull()?.split(' ')?.getOrNull(1)?.toIntOrNull() ?: 0
+        val headers = head.lineSequence().drop(1).mapNotNull { line ->
+            val colon = line.indexOf(':')
+            if (colon <= 0) null else line.substring(0, colon).trim().lowercase() to line.substring(colon + 1).trim()
+        }.toMap()
+        var payload = when {
+            headers["transfer-encoding"]?.contains("chunked", true) == true -> readChunked(input)
+            headers["content-length"]?.toIntOrNull()?.let { it >= 0 } == true ->
+                readExactly(input, headers.getValue("content-length").toInt())
+            else -> input.readBytes()
+        }
+        if (headers["content-encoding"]?.contains("gzip", true) == true &&
+            payload.size > 2 && payload[0] == 0x1f.toByte() && payload[1] == 0x8b.toByte()) {
+            payload = GZIPInputStream(ByteArrayInputStream(payload)).use { it.readBytes() }
+        }
+        if (status !in 200..299) throw ApiException(ErrorKind.Server, status, "波点接口错误（HTTP $status）")
+        return String(payload, Charsets.UTF_8)
+    }
+
+    private fun readHeaderBytes(input: InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        var match = 0
+        while (true) {
+            val byte = input.read()
+            if (byte < 0) break
+            output.write(byte)
+            match = when {
+                byte == 13 && (match == 0 || match == 2) -> match + 1
+                byte == 10 && (match == 1 || match == 3) -> match + 1
+                else -> 0
+            }
+            if (match == 4) break
+        }
+        return output.toByteArray()
+    }
+
+    private fun readExactly(input: InputStream, size: Int): ByteArray {
+        val output = ByteArray(size)
+        var read = 0
+        while (read < size) {
+            val count = input.read(output, read, size - read)
+            if (count < 0) break
+            read += count
+        }
+        return if (read == size) output else output.copyOf(read)
+    }
+
+    private fun readChunked(input: InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        while (true) {
+            val line = readAsciiLine(input) ?: break
+            val size = line.substringBefore(';').trim().toIntOrNull(16) ?: break
+            if (size == 0) {
+                readAsciiLine(input)
+                break
+            }
+            output.write(readExactly(input, size))
+            readAsciiLine(input)
+        }
+        return output.toByteArray()
+    }
+
+    private fun readAsciiLine(input: InputStream): String? {
+        val output = ByteArrayOutputStream()
+        while (true) {
+            val byte = input.read()
+            if (byte < 0) return if (output.size() == 0) null else output.toString("ISO-8859-1")
+            if (byte == 10) break
+            if (byte != 13) output.write(byte)
+        }
+        return output.toString("ISO-8859-1")
     }
 
     private fun parseResponse(raw: ByteArray): String {
