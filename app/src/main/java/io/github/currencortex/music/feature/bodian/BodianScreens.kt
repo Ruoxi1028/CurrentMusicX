@@ -23,8 +23,10 @@ import coil3.compose.AsyncImage
 import io.github.currencortex.music.AppContainer
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
-import io.github.currencortex.music.data.bodian.BodianSong
 import io.github.currencortex.music.data.song.Song
+import io.github.currencortex.music.feature.provider.ProviderHomeIntro
+import io.github.currencortex.music.feature.provider.ProviderHomeScaffold
+import io.github.currencortex.music.feature.provider.ProviderHotSearches
 import io.github.currencortex.music.ui.component.*
 import io.github.currencortex.music.ui.component.nativeui.*
 import io.github.currencortex.music.ui.util.viewModelFactory
@@ -60,7 +62,7 @@ class BodianSearchViewModel(private val container: AppContainer) : ViewModel() {
     }
 }
 
-/** Bodian home: platform switcher, account row and an inline catalogue search. */
+/** Bodian home, using the same brand/search-first shell as the NetEase and QQ homes. */
 @Composable
 fun BodianHomeScreen(container: AppContainer, onAccount: () -> Unit, play: (List<Song>, Int) -> Unit) {
     val preferences by container.musicSettings.state.collectAsStateWithLifecycle()
@@ -68,12 +70,11 @@ fun BodianHomeScreen(container: AppContainer, onAccount: () -> Unit, play: (List
     val scope = rememberCoroutineScope()
     val vm: BodianSearchViewModel = viewModel(factory = viewModelFactory { BodianSearchViewModel(container) })
     val state by vm.state.collectAsStateWithLifecycle()
-    val bottom = LocalMusicBottomInset.current
 
-    LazyColumn(
-        Modifier.fillMaxSize().statusBarsPadding().testTag("bodian_home"),
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 24.dp + bottom),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ProviderHomeScaffold(
+        tag = "bodian_home",
+        avatarUrl = account.avatar,
+        onProfile = { _, _ -> onAccount() },
     ) {
         item(key = "search") {
             MusicSearchBar(
@@ -86,16 +87,31 @@ fun BodianHomeScreen(container: AppContainer, onAccount: () -> Unit, play: (List
                 },
             )
         }
-        item(key = "account") { BodianAccountRow(account.loggedIn, account.nickname, account.avatar, onAccount) }
+        item(key = "intro") {
+            ProviderHomeIntro(
+                "波点音乐",
+                if (account.loggedIn) "${account.nickname.ifBlank { "已登录" }} · 搜索并播放波点曲库"
+                else "免登录可试听，登录后播放完整音源",
+            )
+        }
+        if (!account.loggedIn) item(key = "login") {
+            MusicTextAction("扫码登录波点音乐 ›", onAccount, Modifier.testTag("bodian_home_login"))
+        }
         state.error?.let { error -> item(key = "error") { SettingsHint(error) } }
         if (state.loading) item(key = "loading") { LoadingSongList(6) }
         itemsIndexed(state.songs, key = { index, song -> "${song.bodianId}-$index" }) { index, song ->
             SongRow(SongRowUi(song), { play(state.songs, index) },
                 { container.playerController.add(song, true) }, { container.playerController.add(song) })
         }
-        if (!state.loading && state.songs.isEmpty()) item(key = "hint") {
-            SettingsHint(if (state.submitted.isBlank()) "输入歌名或歌手，搜索并播放波点曲库。"
-            else "没有找到「${state.submitted}」相关歌曲")
+        if (!state.loading && state.songs.isEmpty()) {
+            if (state.submitted.isBlank()) {
+                item(key = "hot") {
+                    ProviderHotSearches(listOf("周杰伦", "林俊杰", "薛之谦", "邓紫棋", "晴天", "稻香")) { term ->
+                        vm.input(term); vm.search()
+                    }
+                }
+                item(key = "hint") { SettingsHint("输入歌名或歌手，搜索并播放波点曲库。") }
+            } else item(key = "empty") { SettingsHint("没有找到「${state.submitted}」相关歌曲") }
         }
     }
 }

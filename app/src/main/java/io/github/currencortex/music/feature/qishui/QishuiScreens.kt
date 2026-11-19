@@ -6,9 +6,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,14 +15,15 @@ import io.github.currencortex.music.AppContainer
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
 import io.github.currencortex.music.data.song.Song
+import io.github.currencortex.music.feature.provider.ProviderHomeIntro
+import io.github.currencortex.music.feature.provider.ProviderHomeScaffold
+import io.github.currencortex.music.feature.provider.ProviderHotSearches
 import io.github.currencortex.music.ui.component.*
 import io.github.currencortex.music.ui.component.nativeui.*
 import io.github.currencortex.music.ui.util.viewModelFactory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 data class QishuiSearchState(
     val query: String = "", val submitted: String = "",
@@ -52,20 +51,15 @@ class QishuiSearchViewModel(private val container: AppContainer) : ViewModel() {
     }
 }
 
-/** Qishui home: anonymous car-client search, no account required for standard playback. */
+/** Qishui home, using the same brand/search-first shell as the NetEase and QQ homes. */
 @Composable
 fun QishuiHomeScreen(container: AppContainer, play: (List<Song>, Int) -> Unit) {
     val preferences by container.musicSettings.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val vm: QishuiSearchViewModel = viewModel(factory = viewModelFactory { QishuiSearchViewModel(container) })
     val state by vm.state.collectAsStateWithLifecycle()
-    val bottom = LocalMusicBottomInset.current
 
-    LazyColumn(
-        Modifier.fillMaxSize().statusBarsPadding().testTag("qishui_home"),
-        contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 24.dp + bottom),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    ProviderHomeScaffold(tag = "qishui_home", avatarUrl = null) {
         item(key = "search") {
             MusicSearchBar(
                 state.query, { vm.search() }, Modifier.testTag("qishui_home_search"),
@@ -77,22 +71,22 @@ fun QishuiHomeScreen(container: AppContainer, play: (List<Song>, Int) -> Unit) {
                 },
             )
         }
-        item(key = "notice") {
-            Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("汽水音乐", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                Text("免登录搜索 · 平台明文标准音源", fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
-            }
-        }
+        item(key = "intro") { ProviderHomeIntro("汽水音乐", "免登录搜索 · 平台明文标准音源") }
         state.error?.let { error -> item(key = "error") { SettingsHint(error) } }
         if (state.loading) item(key = "loading") { LoadingSongList(6) }
         itemsIndexed(state.songs, key = { index, song -> "${song.qishuiId}-$index" }) { index, song ->
             SongRow(SongRowUi(song), { play(state.songs, index) },
                 { container.playerController.add(song, true) }, { container.playerController.add(song) })
         }
-        if (!state.loading && state.songs.isEmpty()) item(key = "hint") {
-            SettingsHint(if (state.submitted.isBlank()) "输入歌名或歌手，搜索并播放汽水曲库。"
-            else "没有找到「${state.submitted}」相关歌曲")
+        if (!state.loading && state.songs.isEmpty()) {
+            if (state.submitted.isBlank()) {
+                item(key = "hot") {
+                    ProviderHotSearches(listOf("周杰伦", "林俊杰", "薛之谦", "邓紫棋", "晴天", "稻香")) { term ->
+                        vm.input(term); vm.search()
+                    }
+                }
+                item(key = "hint") { SettingsHint("输入歌名或歌手，搜索并播放汽水曲库。") }
+            } else item(key = "empty") { SettingsHint("没有找到「${state.submitted}」相关歌曲") }
         }
     }
 }
