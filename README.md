@@ -70,7 +70,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 ## 开始使用
 
-1. **下载安装。** 前往 [Releases](https://github.com/Ruoxi1028/CurrentMusicX/releases/latest) 下载 `CurrentMusicX-folia-refactor-debug.apk`。当前发布为 Debug 构建，与旧正式版签名不同；如已安装旧版，请先卸载再安装。
+1. **下载安装。** 前往 [Releases](https://github.com/Ruoxi1028/CurrentMusicX/releases/latest) 下载 `CurrentMusicX-v1.0.0-debug.apk`。当前发布为 Debug 构建，与旧正式版签名不同；如已安装旧版，请先卸载再安装。
 2. **登录音乐平台账号。** 进入「我的 → 音乐平台账号」，扫码登录网易云音乐或 QQ 音乐。应用不提供自有账号，登录平台后即可搜索、播放与同步收藏。
 3. **连接音乐库。** 也可在「设置 → 音源与网络 → 自建曲库」连接 Navidrome 自建曲库；歌词来源可在同一页面选择，默认**自动择优：逐字优先，逐行兜底**。
 
