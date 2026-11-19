@@ -159,6 +159,7 @@ class KugouRepository(
         cover = entry.cover,
         durationMs = entry.durationMs,
         musicSource = MusicSource.KUGOU,
+        kugouHash = entry.hash,
     )
 
     // ---- Playback (folia: song/url with quality fallbacks) -----------------------

@@ -241,6 +241,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         active = { io.github.currencortex.music.feature.provider.OnlineProviderId.from(
             when (musicSettings.state.value.musicPlatform) {
                 io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC -> "qq"
+                io.github.currencortex.music.data.settings.MusicPlatform.KUGOU -> "kugou"
                 else -> "netease"
             }) },
         netease = { neteaseSessions.state.value },

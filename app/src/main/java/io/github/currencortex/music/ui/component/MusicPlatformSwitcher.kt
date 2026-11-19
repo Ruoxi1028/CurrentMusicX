@@ -198,4 +198,5 @@ private fun MusicPlatformIcon(icon: Int, enabled: Boolean = true) {
 private fun platformIcon(platform: MusicPlatform): Int = when (platform) {
     MusicPlatform.NETEASE -> R.drawable.ic_platform_netease
     MusicPlatform.QQ_MUSIC -> R.drawable.ic_platform_qq_music
+    MusicPlatform.KUGOU -> R.drawable.ic_platform_kugou
 }
