@@ -34,7 +34,7 @@ data class MusicSettings(val server: String = ServerDefaults.URL, val quality: A
 }
 
 enum class MusicPlatform(val label: String) {
-    NETEASE("网易云音乐"), QQ_MUSIC("QQ 音乐"), KUGOU("酷狗音乐");
+    NETEASE("网易云音乐"), QQ_MUSIC("QQ 音乐"), KUGOU("酷狗音乐"), BODIAN("波点音乐");
     companion object { fun from(value: String?) = entries.firstOrNull { it.name == value } ?: NETEASE }
 }
 

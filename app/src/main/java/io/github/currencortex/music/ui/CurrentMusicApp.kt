@@ -187,6 +187,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     val lyricsFontSettings by container.musicSettings.state.collectAsStateWithLifecycle()
     val qqSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC
     val kugouSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.KUGOU
+    val bodianSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.BODIAN
     val lyricsFont = io.github.currencortex.music.feature.lyrics.ui.rememberLyricsFont(lyricsFontSettings)
     AppRefreshRateRequest(settings.refreshRate)
     val settingsVm: SettingsViewModel = viewModel(factory = viewModelFactory { SettingsViewModel(container.settings) })
@@ -603,6 +604,10 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                                     io.github.currencortex.music.feature.kugou.KugouHomeScreen(container,
                                         onAccount = { navigateLibrary("kugou/account") },
                                         play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
+                                else if (bodianSelected)
+                                    io.github.currencortex.music.feature.bodian.BodianHomeScreen(container,
+                                        onAccount = { navigateLibrary("bodian/account") },
+                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
                                 else if (navidromeAccount.configured && navidromeAccount.home)
                                     io.github.currencortex.music.feature.navidrome.NavidromeScreen(navidromeVm, libraryVm, ::navigateLibrary,
                                         { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, root = true)
@@ -758,6 +763,15 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                             "kugou/account" -> io.github.currencortex.music.feature.kugou.KugouAccountScreen(container, ::navigateBack)
                             else -> io.github.currencortex.music.feature.kugou.KugouSearchScreen(container, ::navigateBack,
                                 onAccount = { navigateLibrary("kugou/account") })
+                        }
+                    }
+                }
+                backStack.filter { it.startsWith("bodian/") }.distinct().forEach { route ->
+                    entry(route) {
+                        when (route) {
+                            "bodian/account" -> io.github.currencortex.music.feature.bodian.BodianAccountScreen(container, ::navigateBack)
+                            else -> io.github.currencortex.music.feature.bodian.BodianSearchScreen(container, ::navigateBack,
+                                onAccount = { navigateLibrary("bodian/account") })
                         }
                     }
                 }

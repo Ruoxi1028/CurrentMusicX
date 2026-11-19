@@ -234,7 +234,15 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                     io.github.currencortex.music.data.kugou.KugouAccountState.serializer(), saved))
             else kugouVault.clear()
         } })
-    val musicRepository = MusicRepository(apiClient, navidrome = navidrome, qqMusic = qqMusic, kugou = kugou)
+    val bodianVault = SecureTokenStore(context, ".bodian$storageSuffix")
+    val bodian = io.github.currencortex.music.data.bodian.BodianRepository(
+        persist = { saved -> appScope.launch {
+            // The device id must survive logout; the car protocol reuses it for every request.
+            bodianVault.write(io.github.currencortex.music.core.network.ApiJson.encodeToString(
+                io.github.currencortex.music.data.bodian.BodianAccountState.serializer(), saved))
+        } })
+    val musicRepository = MusicRepository(apiClient, navidrome = navidrome, qqMusic = qqMusic, kugou = kugou,
+        bodian = bodian)
     internal fun qqAudioIdentity(): String = qqMusic.audioIdentity
     /** folia-style provider account hub: the app logs into music platforms, not into itself. */
     val providerHub = io.github.currencortex.music.feature.provider.ProviderAccountHub(
@@ -242,11 +250,13 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             when (musicSettings.state.value.musicPlatform) {
                 io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC -> "qq"
                 io.github.currencortex.music.data.settings.MusicPlatform.KUGOU -> "kugou"
+                io.github.currencortex.music.data.settings.MusicPlatform.BODIAN -> "bodian"
                 else -> "netease"
             }) },
         netease = { neteaseSessions.state.value },
         qq = { qqMusic.state.value },
         kugou = { kugou.state.value },
+        bodian = { bodian.state.value },
     )
 
     fun audioRequest(song: io.github.currencortex.music.data.song.Song, quality: AudioQuality, supportsDolby: Boolean = false): AudioRequest {
@@ -262,6 +272,10 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             return AudioRequest(song.id, quality, 0L,
                 RequestSession("https://kugou.com/", kugou.state.value.userid.takeIf { kugou.state.value.loggedIn },
                     kugou.state.value.revision), "kugou", song)
+        if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.BODIAN)
+            return AudioRequest(song.id, quality, 0L,
+                RequestSession("https://bd-api.kuwo.cn/", bodian.state.value.uid.takeIf { bodian.state.value.loggedIn },
+                    bodian.state.value.revision), "bodian", song)
         if (song.neteaseCloud) {
             val owner = neteaseSessions.state.value
             return AudioRequest(song.id, quality, owner.profile?.uid ?: 0L,
@@ -302,6 +316,9 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.KUGOU }?.let {
             val account = kugou.state.value
             request.session == RequestSession("https://kugou.com/", account.userid.takeIf { account.loggedIn }, account.revision)
+        } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.BODIAN }?.let {
+            val account = bodian.state.value
+            request.session == RequestSession("https://bd-api.kuwo.cn/", account.uid.takeIf { account.loggedIn }, account.revision)
         } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME }?.let {
             navidrome.accepts(it) && request.session == navidrome.session() && request.providerIdentity == "navidrome:" + navidrome.state.value.identity
         } ?: request.song?.takeIf { it.neteaseCloud }?.let {
@@ -617,6 +634,18 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 }
             }
         }
+        playerScope.launch {
+            sessionRestored.await()
+            var revision = bodian.state.value.revision
+            bodian.state.collect {
+                if (it.revision != revision) {
+                    revision = it.revision
+                    audioSources.invalidate()
+                    if (playbackQueue.state.value.current?.musicSource == io.github.currencortex.music.data.song.MusicSource.BODIAN)
+                        playerController.pause()
+                }
+            }
+        }
         appScope.launch {
             storageSettings.limitBytes.collect { bytes ->
                 try { audioCache.setMaxBytes(bytes) }
@@ -649,6 +678,16 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                         io.github.currencortex.music.core.network.ApiJson
                             .decodeFromString(io.github.currencortex.music.data.kugou.KugouAccountState.serializer(), raw)
                     }?.let { saved -> kugou.restore(saved) }
+                }
+                runCatching {
+                    bodianVault.read()?.takeIf(String::isNotBlank)?.let { raw ->
+                        io.github.currencortex.music.core.network.ApiJson
+                            .decodeFromString(io.github.currencortex.music.data.bodian.BodianAccountState.serializer(), raw)
+                    }
+                }.getOrNull().let { saved ->
+                    runCatching {
+                        bodian.restore(saved ?: io.github.currencortex.music.data.bodian.BodianAccountState())
+                    }
                 }
                 ready.complete(Unit)
                 sessionRestored.complete(Unit)

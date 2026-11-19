@@ -52,6 +52,7 @@ fun ProviderAccountScreen(
                                 OnlineProviderId.NETEASE -> "user/binding"
                                 OnlineProviderId.QQ -> "qq/account"
                                 OnlineProviderId.KUGOU -> "kugou/account"
+                                OnlineProviderId.BODIAN -> "bodian/account"
                             })
                         })
                     if (provider != snapshot.providers.last()) SettingsDivider()
@@ -87,6 +88,9 @@ fun ProviderAccountScreen(
             SettingsSection("曲库", MusicIcons.Storage) {
                 MusicDestinationRow("酷狗音乐", { navigate("kugou/search") },
                     Modifier.testTag("provider_kugou"), summary = "搜索并播放酷狗曲库")
+                SettingsDivider()
+                MusicDestinationRow("波点音乐", { navigate("bodian/search") },
+                    Modifier.testTag("provider_bodian"), summary = "搜索并播放波点曲库")
                 if (navidrome.configured) {
                     SettingsDivider()
                     MusicDestinationRow("Navidrome", { navigate("navidrome") },

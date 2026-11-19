@@ -15,7 +15,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 class MusicRepository(private val api: ApiClient,
     private val navidrome: io.github.currencortex.music.data.navidrome.NavidromeRepository? = null,
     private val qqMusic: io.github.currencortex.music.data.qqmusic.QqMusicRepository? = null,
-    private val kugou: io.github.currencortex.music.data.kugou.KugouRepository? = null) {
+    private val kugou: io.github.currencortex.music.data.kugou.KugouRepository? = null,
+    private val bodian: io.github.currencortex.music.data.bodian.BodianRepository? = null) {
     val insights = SongInsightsRepository(api)
     suspend fun previewClip(song: Song): SongPreviewClip {
         val id = NeteaseSongActionsRepository.songId(song)
@@ -42,6 +43,8 @@ class MusicRepository(private val api: ApiClient,
         if (song.musicSource == MusicSource.NAVIDROME) return requireNotNull(navidrome).source(song, quality)
         if (song.musicSource == MusicSource.KUGOU)
             return requireNotNull(kugou).audioSource(song.kugouHash, quality)
+        if (song.musicSource == MusicSource.BODIAN)
+            return requireNotNull(bodian).audioSource(song.bodianId, song.bodianFreeSign, quality)
         if (song.neteaseCloud) return source(song.id, quality, session, refresh, supportsDolby, nativeCloud = true)
         return source(song.id, quality, session, refresh, supportsDolby)
     }

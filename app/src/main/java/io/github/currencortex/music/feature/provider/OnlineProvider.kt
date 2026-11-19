@@ -12,6 +12,7 @@ enum class OnlineProviderId(val id: String, val label: String) {
     NETEASE("netease", "网易云音乐"),
     QQ("qq", "QQ 音乐"),
     KUGOU("kugou", "酷狗音乐"),
+    BODIAN("bodian", "波点音乐"),
     ;
 
     companion object {
@@ -56,11 +57,13 @@ class ProviderAccountHub(
     private val netease: () -> NeteaseAccountState,
     private val qq: () -> QqAccountState,
     private val kugou: () -> io.github.currencortex.music.data.kugou.KugouAccountState,
+    private val bodian: () -> io.github.currencortex.music.data.bodian.BodianAccountState,
 ) {
     fun snapshot(): ProviderAccountSnapshot {
         val neteaseState = netease()
         val qqState = qq()
         val kugouState = kugou()
+        val bodianState = bodian()
         return ProviderAccountSnapshot(
             active = active(),
             providers = listOf(
@@ -74,6 +77,9 @@ class ProviderAccountHub(
                 OnlineProviderSummary(OnlineProviderId.KUGOU, OnlineProviderId.KUGOU.label,
                     OnlineProviderCapabilities(recommendations = true),
                     kugouState.loggedIn, kugouState.nickname, kugouState.avatar),
+                OnlineProviderSummary(OnlineProviderId.BODIAN, OnlineProviderId.BODIAN.label,
+                    OnlineProviderCapabilities(recommendations = true),
+                    bodianState.loggedIn, bodianState.nickname, bodianState.avatar),
             ),
         )
     }

@@ -262,6 +262,7 @@ class SongLyricsStore(private val directory: File) {
                 MusicSource.APPLE_MUSIC -> song.externalIds.appleMusicId
                 MusicSource.SPOTIFY -> song.externalIds.spotifyId
                 MusicSource.KUGOU -> song.kugouHash.takeIf { it.isNotBlank() }
+                MusicSource.BODIAN -> song.bodianId.takeIf { it.isNotBlank() }
                 MusicSource.NAVIDROME, MusicSource.LOCAL -> null
             }
             return "${song.musicSource.name.lowercase(Locale.ROOT)}:${external?.takeIf { it.isNotBlank() } ?: song.id}"
