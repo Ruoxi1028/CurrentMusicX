@@ -33,8 +33,7 @@ open class MvDownloadWorker(context: Context, params: WorkerParameters) : Corout
         container.ready.await(); container.sessionRestored.await()
         val session = container.musicSession()
         fun verify() {
-            check(inputData.getLong("account", -1) == (container.accountRepository.state.value.account?.id ?: 0L) &&
-                inputData.getString("server") == session.server && session == container.musicSession() &&
+            check(inputData.getString("server") == session.server && session == container.musicSession() &&
                 (inputData.getLong("netease_uid", -1) < 0 || inputData.getLong("netease_uid", -1) ==
                     (container.neteaseSessions.state.value.profile?.uid ?: 0L))) { "账号已变化，请重新开始 MV 下载" }
         }

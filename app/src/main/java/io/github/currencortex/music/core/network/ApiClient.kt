@@ -9,16 +9,18 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import io.github.currencortex.music.core.netease.NeteaseGateway
 
+/**
+ * Project-server HTTP. There is no account token: sessions identify a server plus
+ * the NetEase direct-login revision. NetEase routes (`ncm*` / `ncmbind*`) are
+ * answered by the on-device [NeteaseGateway] whenever it handles the path.
+ */
 class ApiClient(
     private val server: () -> String,
     private val token: () -> String?,
-    private val onUnauthorized: (RequestSession) -> Unit,
     private val log: (String) -> Unit = {},
     client: OkHttpClient = defaultHttpClient(),
     val netease: NeteaseGateway? = null,
     private val nativeMedia: () -> Boolean = { false },
-    private val currentMusicAccountReady: () -> Boolean = { !token().isNullOrBlank() },
-    private val currentMusicSessionRevision: () -> Long = { 0L },
     val routeServer: (String) -> String = { it },
 ) {
     companion object {
@@ -27,21 +29,17 @@ class ApiClient(
             .callTimeout(90, TimeUnit.SECONDS).followRedirects(false).build()
     }
 
-    private val http = client.newBuilder().addInterceptor(AuthInterceptor()).build()
+    private val http = client.newBuilder().build()
     private val singleAttemptHttp = http.newBuilder().retryOnConnectionFailure(false).build()
-    private val audioSourceHttp = http.newBuilder().followRedirects(false).followSslRedirects(false)
-        .cookieJar(okhttp3.CookieJar.NO_COOKIES).build()
     val hasLocalNeteaseLogin get() = netease?.sessions?.state?.value?.loggedIn == true
     val nativeMediaEnabled get() = nativeMedia() && netease != null
     /** Public metadata requests belong to a server, never to an account token. */
     fun publicSession() = RequestSession(server(), null)
     private fun useNative(path: String, authenticated: Boolean, projectToken: String?): Boolean {
         if (netease?.handles(path, nativeMedia()) != true) return false
-        // Imported snapshots belong to the project account, even with a local NetEase login.
-        if (path == "ncmbind/sync" || path == "ncmbind/import") return false
         // Explicit native mode never falls back to the project server for NetEase routes.
         if (nativeMedia()) return true
-        // Login runs on-device; project binding is synchronized separately over HTTPS.
+        // Login runs on-device; the project binding is only a legacy fallback.
         if (path.startsWith("ncmbind/phone/") || path.startsWith("ncmbind/qr/") ||
             path in setOf("ncmbind/membership", "ncmbind/medals", "ncm/captcha/sent/v1")) return true
         // Without a local credential, the project server can use its own saved binding.
@@ -50,33 +48,19 @@ class ApiClient(
     suspend fun request(method: String, path: String, query: Map<String, String> = emptyMap(),
                         body: JsonElement? = null, authenticated: Boolean = false, expectedSession: RequestSession? = null,
                         retryConnection: Boolean = true, callTimeoutMillis: Long? = null,
-                        projectOnly: Boolean = false, passkeyOrigin: String? = null,
+                        projectOnly: Boolean = false,
                         extraHeaders: Map<String, String> = emptyMap()): JsonElement = withContext(Dispatchers.IO) {
         require(extraHeaders.keys.all { it.equals("X-QQ-Session", ignoreCase = true) } &&
             (extraHeaders.isEmpty() || path.startsWith("qqmusic/")))
         val session = RequestSession(server(), if (authenticated) token() else null)
-        val serverAudioSource = path == "audio-sources" || path.startsWith("audio-sources/")
-        val requiresAccount = serverAudioSource || path == "ncmbind/import" || path.startsWith("ncmbind/qr/") || path.startsWith("ncmbind/phone/") || path == "ncm/captcha/sent/v1" ||
-            (authenticated && path.startsWith("qqmusic/"))
-        val loginOwner = RequestSession(server(), token())
-        val loginRevision = currentMusicSessionRevision()
-        fun checkLoginOwner() {
-            if (requiresAccount && (loginOwner.token.isNullOrBlank() || !currentMusicAccountReady() ||
-                loginOwner != RequestSession(server(), token()) || loginRevision != currentMusicSessionRevision()))
-                throw if (serverAudioSource) ApiException(ErrorKind.Unauthorized, userMessage = "请登录当前 CurrentMusic 服务器后重试")
-                else ApiException(ErrorKind.CurrentMusicAccountRequired)
-        }
-        // Native routes bypass project HTTP authentication, so login needs its own prerequisite.
-        checkLoginOwner()
         if (expectedSession != null && (expectedSession.server != session.server || expectedSession.token != session.token)) throw ApiException(ErrorKind.Unauthorized)
-        if ((netease?.handles(path) == true || path == "ncmbind/import") && expectedSession?.neteaseRevision != null &&
+        if ((netease?.handles(path) == true) && expectedSession?.neteaseRevision != null &&
             expectedSession.neteaseRevision != netease?.sessions?.state?.value?.revision) throw ApiException(ErrorKind.NeteaseSessionChanged)
         if (!projectOnly && useNative(path, authenticated, session.token)) {
             val netease = requireNotNull(netease)
             if (expectedSession?.neteaseRevision != null && expectedSession.neteaseRevision != netease.sessions.state.value.revision)
                 throw ApiException(ErrorKind.NeteaseSessionChanged)
-            val response = netease.request(method, path, query, body, expectedSession?.neteaseRevision, ::checkLoginOwner)
-            checkLoginOwner()
+            val response = netease.request(method, path, query, body, expectedSession?.neteaseRevision)
             if (expectedSession != null && (expectedSession.server != server() || expectedSession.token != if (authenticated) token() else null))
                 throw ApiException(ErrorKind.Unauthorized)
             val changesLogin = path == "ncmbind/phone/login" || path == "ncmbind/qr/check" || path == "ncmbind/refresh" || (path == "ncmbind" && method == "DELETE")
@@ -84,62 +68,37 @@ class ApiClient(
                 throw ApiException(ErrorKind.NeteaseSessionChanged)
             return@withContext response
         }
-        // Native routing above owns its own credentials. Project-only protected requests
-        // need a project session; do not send known-anonymous requests just to receive 401.
-        if (authenticated && session.token.isNullOrBlank())
-            throw ApiException(ErrorKind.Unauthorized, userMessage = "请先登录 CurrentMusic 账号")
-        if (passkeyOrigin != null) {
-            require(path in setOf("auth/passkeys/login/options", "auth/passkeys/login/verify"))
-            require(passkeyOrigin.matches(Regex("android:apk-key-hash:[A-Za-z0-9_-]{43}")))
-        }
-        val url = ServerUrl.endpoint(if (passkeyOrigin != null) NativePasskeyRoute.server(session.server)
-            else routeServer(session.server), path, query)
-        if (serverAudioSource && !url.isHttps)
-            throw ApiException(ErrorKind.Forbidden, userMessage = "服务器音源需要 HTTPS 线路")
+        val url = ServerUrl.endpoint(routeServer(session.server), path, query)
         val request = Request.Builder().url(url).tag(RequestSession::class.java, session)
             .header("Accept", "application/json")
             .apply { extraHeaders.forEach { (key, value) -> header(key, value) } }
-            .apply { if (passkeyOrigin != null) header("Origin", passkeyOrigin) }
             .method(method, if (method == "GET") null else (body?.toString() ?: "{}").toRequestBody("application/json".toMediaType()))
             .build()
         val requestClient = when {
-            serverAudioSource -> audioSourceHttp
             retryConnection -> http
             else -> singleAttemptHttp
         }
         val call = requestClient.newCall(request)
         callTimeoutMillis?.let { call.timeout().timeout(it, TimeUnit.MILLISECONDS) }
         val (code, raw) = call.readResponse { response ->
-            val responseBody = response.body
-            if (serverAudioSource && responseBody?.source()?.request(65_537) == true)
-                throw ApiException(ErrorKind.Parse, userMessage = "服务器音源响应过大")
-            response.code to responseBody?.string().orEmpty()
+            response.code to response.body?.string().orEmpty()
         }
-        checkLoginOwner()
         if (expectedSession != null && (expectedSession.server != server() || expectedSession.token != if (authenticated) token() else null))
             throw ApiException(ErrorKind.Unauthorized)
-        if ((netease?.handles(path) == true || path == "ncmbind/import") && expectedSession?.neteaseRevision != null &&
+        if ((netease?.handles(path) == true) && expectedSession?.neteaseRevision != null &&
             expectedSession.neteaseRevision != netease?.sessions?.state?.value?.revision) throw ApiException(ErrorKind.NeteaseSessionChanged)
         log("$method $path HTTP $code")
         if (code !in 200..299) {
-            // Older NCM gateway also uses 401 for missing NCM binding. Only a project-session
-            // rejection should invalidate the account.
             val errorText = raw
-            if (code == 401 && authenticated && !path.startsWith("qqmusic/") && !errorText.contains("绑定")) onUnauthorized(session)
-            // Account validation is user-facing upstream text, not a generic HTTP failure.
-            // Other routes and server failures retain their existing bounded error mapping.
-            val accountError = if (code in 400..499 && (path.startsWith("qqmusic/") || path in setOf("auth/login", "auth/2fa/login", "auth/security-question/login",
-                    "auth/login/email", "auth/login/email/code", "auth/2fa/setup", "auth/2fa/enable", "auth/2fa/disable",
-                    "auth/security-question", "auth/passkeys/login/options", "auth/passkeys/login/verify",
-                    "auth/register", "auth/email/code", "auth/phone/code",
-                    "auth/password/code", "auth/password/reset", "profile/password/code", "profile/password")))
+            // Upstream validation text is user-facing; other routes keep the bounded mapping.
+            val accountError = if (code in 400..499 && (path.startsWith("qqmusic/")))
                 runCatching {
                     val error = ApiJson.parseToJsonElement(errorText).jsonObject
                     ((error["error"] ?: error["message"]) as? JsonPrimitive)
                         ?.takeIf { value -> value.isString }?.content?.trim()?.takeIf { value -> value.isNotEmpty() }?.take(240)
                 }.getOrNull() else null
             throw ApiException(when (code) {
-                401 -> if (errorText.contains("绑定")) ErrorKind.Forbidden else ErrorKind.Unauthorized
+                401 -> ErrorKind.Unauthorized
                 403 -> ErrorKind.Forbidden; 404 -> ErrorKind.NotFound; 429 -> ErrorKind.RateLimited
                 in 500..599 -> ErrorKind.Server; else -> ErrorKind.Unknown
             }, code, accountError)

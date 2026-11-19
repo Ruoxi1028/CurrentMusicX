@@ -1,18 +1,7 @@
 package io.github.currencortex.music.feature.binding
 
-import io.github.currencortex.music.ui.component.MusicDialogButton
-import io.github.currencortex.music.ui.component.musicScrollPadding
-import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import io.github.currencortex.music.ui.component.MusicPlaceholder
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,25 +12,28 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import io.github.currencortex.music.ui.util.collectAsPageState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import io.github.currencortex.music.ui.component.MusicDialog
-import kotlinx.coroutines.*
+import io.github.currencortex.music.ui.component.MusicDialogButton
+import io.github.currencortex.music.ui.component.MusicPlaceholder
+import io.github.currencortex.music.ui.component.musicScrollPadding
 import io.github.currencortex.music.ui.component.nativeui.*
+import io.github.currencortex.music.ui.util.collectAsPageState
+import kotlinx.coroutines.*
 import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -50,7 +42,9 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
         mapOf(EncodeHintType.MARGIN to 4, EncodeHintType.CHARACTER_SET to "UTF-8"))
     return IntArray(size * size) { index -> if (matrix[index % size, index / size]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
 }
-@Composable fun BindingScreen(vm: BindingViewModel, onBack: () -> Unit, onCurrentMusicLogin: () -> Unit = {}) {
+
+/** NetEase account page: scan the QR code or use a phone captcha to log into NetEase Cloud Music. */
+@Composable fun BindingScreen(vm: BindingViewModel, onBack: () -> Unit) {
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     fun finishInput() { focus.clearFocus(); keyboard?.hide() }
@@ -58,22 +52,15 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
     val membership by vm.membership.collectAsPageState()
     val medals by vm.medals.collectAsPageState()
     val busy by vm.busy.collectAsStateWithLifecycle()
-    val projectSync by vm.container.bindingRepository.projectBindingSync.collectAsStateWithLifecycle()
     val musicSettings by vm.container.musicSettings.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
-    val account by vm.container.accountRepository.state.collectAsStateWithLifecycle()
-    val settings by vm.container.musicSettings.state.collectAsStateWithLifecycle()
-    val tasksEnabled by vm.container.neteaseTasksEnabled.collectAsStateWithLifecycle()
-    val taskScope = rememberCoroutineScope()
-    val sessionRevision by vm.container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
-    val canLoginNetease = account.account != null && vm.canLoginNetease
-    var qr by rememberSaveable(account.account?.id, settings.server, sessionRevision) { mutableStateOf(true) }
+    var qr by rememberSaveable { mutableStateOf(true) }
     var generation by remember { mutableIntStateOf(0) }
-    var phone by rememberSaveable(account.account?.id, settings.server, sessionRevision) { mutableStateOf("") }
-    var country by rememberSaveable(account.account?.id, settings.server, sessionRevision) { mutableStateOf("86") }
-    var captcha by remember(account.account?.id, settings.server, sessionRevision) { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var country by rememberSaveable { mutableStateOf("86") }
+    var captcha by remember { mutableStateOf("") }
     var unbind by remember { mutableStateOf(false) }
-    var reauthenticate by rememberSaveable(account.account?.id, settings.server, sessionRevision) { mutableStateOf(false) }
+    var reauthenticate by rememberSaveable { mutableStateOf(false) }
     val list = rememberLazyListState()
     var revealLogin by remember { mutableStateOf(false) }
     LaunchedEffect(revealLogin) {
@@ -86,8 +73,8 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
     val loginVisible = reauthenticate || state.binding?.let { !it.bound || it.stale } == true ||
         (state.binding == null && !state.loading && state.error != null)
     val owner = LocalLifecycleOwner.current
-    LaunchedEffect(vm, owner, qr, loginVisible, generation, account.account?.id, settings.server, sessionRevision) {
-        if (qr && loginVisible && canLoginNetease) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(vm, owner, qr, loginVisible, generation) {
+        if (qr && loginVisible) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             vm.qrSession(); awaitCancellation()
         } else vm.clearQr()
     }
@@ -97,27 +84,16 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
         now = SystemClock.elapsedRealtime()
         while (now < state.codeUntil) { delay(1000); now = SystemClock.elapsedRealtime() }
     }
-    val bitmap by produceState<Bitmap?>(null, state.qrUrl) {
+    val bitmap by produceState<android.graphics.Bitmap?>(null, state.qrUrl) {
         val url = state.qrUrl
         value = if (url == null) null else withContext(Dispatchers.Default) {
-            Bitmap.createBitmap(qrPixels(url), 512, 512, Bitmap.Config.ARGB_8888)
+            android.graphics.Bitmap.createBitmap(qrPixels(url), 512, 512, android.graphics.Bitmap.Config.ARGB_8888)
         }
     }
     MusicSubpage("网易云账号", "binding_page", onBack, backTag = "binding_back") { topInset ->
     LazyColumn(Modifier.fillMaxSize().testTag("binding_screen"), state = list,
         contentPadding = musicScrollPadding(PaddingValues(16.dp, topInset + 8.dp, 16.dp, 32.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (!canLoginNetease) item {
-            SettingsGroup(Modifier.fillMaxWidth().testTag("binding_currentmusic_required")) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("先登录 CurrentMusic", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    Text("请先注册并登录 CurrentMusic 账号，再登录网易云。已有账号可直接登录。",
-                        fontSize = 14.sp, lineHeight = 22.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    GlassActionButton("注册 / 登录 CurrentMusic", onCurrentMusicLogin, primary = true,
-                        modifier = Modifier.fillMaxWidth().testTag("binding_currentmusic_login"))
-                }
-            }
-        }
         if (state.loading && state.binding == null) item {
             SettingsGroup(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -133,59 +109,22 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
                 BindingAction("重试", vm::reload, enabled = !busy)
             }
         } }
-        if (canLoginNetease) item {
-            SettingsGroup(Modifier.testTag("binding_project_sync")) {
-                SettingsPreference("同步至 CurrentMusic", "网易云登录态会通过 HTTPS 同步至当前服务器，供同一账号的网页端和 App 使用。")
-                if (vm.container.apiClient.hasLocalNeteaseLogin) {
-                    SettingsDivider()
-                    SettingsPreference(when {
-                        projectSync.syncing -> "正在同步绑定…"
-                        projectSync.synced -> "绑定已同步"
-                        else -> "绑定尚未同步"
-                    }, projectSync.error ?: if (!projectSync.synced && !projectSync.syncing) "本机登录已保留，可手动重试同步。" else null,
-                        modifier = Modifier.testTag("binding_project_sync_status"), trailing = {
-                            if (projectSync.synced) SettingsSelectionCheck(true)
-                            else GlassActionButton("同步绑定", vm::syncProjectBinding,
-                                Modifier.testTag("binding_project_sync_retry"),
-                                enabled = !busy && !projectSync.syncing, fillWidth = false)
-                        })
-                }
-            }
-        }
         state.binding?.let { binding ->
             if (binding.bound) item {
-                BindingAccountCard(binding, busy, { if (musicSettings.neteaseMainLibrary || vm.container.apiClient.hasLocalNeteaseLogin) vm.reloadMusic() else vm.sync() }, vm::live, vm::refresh,
+                BindingAccountCard(binding, busy, vm::reloadMusic, vm::live, vm::refresh,
                     { finishInput(); reauthenticate = true; revealLogin = true }, { unbind = true }, musicSettings.neteaseMainLibrary || vm.container.apiClient.hasLocalNeteaseLogin,
                     membership, vm::reloadMembership)
                 if (!binding.stale && medals.ownerId == binding.profile?.uid) {
                     Spacer(Modifier.height(16.dp))
                     BindingMedalsCard(medals, vm::reloadMedals)
                 }
-            } else if (canLoginNetease) item {
+            } else item {
                 Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("连接你的音乐库", fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-                    Text("连接网易云的我喜欢和歌单，在 CurrentMusic 中继续聆听。", fontSize = 13.sp, lineHeight = 21.sp,
+                    Text("扫码或用手机验证码登录网易云，直接使用我喜欢与歌单。", fontSize = 13.sp, lineHeight = 21.sp,
                         color = MiuixTheme.colorScheme.onSurface.copy(alpha = .55f))
                 }
             }
-        }
-        if (vm.container.nativeNetease != null) item {
-            SettingsGroup(Modifier.fillMaxWidth()) {
-                io.github.currencortex.music.ui.component.SettingsSwitch("网易云任务", tasksEnabled == true, { enabled ->
-                    taskScope.launch {
-                        val result = io.github.currencortex.music.core.network.appResult { vm.container.neteaseTaskPreferences.enable(enabled) }
-                        if (result is io.github.currencortex.music.core.network.AppResult.Failure) vm.container.errorNotices.show(result.message)
-                    }
-                }, Modifier.testTag("netease_tasks_enabled"), summary = "开启后在“我的”的网易云账号下方显示任务入口", enabled = tasksEnabled != null)
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(if (vm.container.apiClient.hasLocalNeteaseLogin)
-                "当前使用本机网易云登录，登录信息加密保存在此设备。CurrentMusic 云端资产独立同步。"
-                else if (state.binding?.bound == true)
-                    "已复用当前 CurrentMusic 账号的云端网易云绑定，无需再次扫码。本机登录可用于直连和原版音效。"
-                else "注册并登录 CurrentMusic 后，可在此登录网易云。网易云凭据加密保存在此设备，原生接口仍直连网易云。",
-                fontSize = 12.sp, lineHeight = 19.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .55f),
-                modifier = Modifier.testTag("netease_direct_notice"))
         }
         item {
             SettingsGroup(Modifier.fillMaxWidth()) {
@@ -194,9 +133,16 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
                     summary = "绑定后直接使用网易云我喜欢；点红心同步收藏，长按选择其他歌单", enabled = !busy)
             }
         }
+        if (vm.container.nativeNetease != null) item {
+            Text(if (vm.container.apiClient.hasLocalNeteaseLogin)
+                "当前使用本机网易云登录，登录信息加密保存在此设备。"
+                else "登录网易云后即可直连网易云接口，凭据加密保存在本机。",
+                fontSize = 12.sp, lineHeight = 19.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .55f),
+                modifier = Modifier.testTag("netease_direct_notice"))
+        }
         if (busy) item { BindingNotice("正在处理，请稍候…", busy = true) }
         message?.let { value -> item { BindingNotice(value, Modifier.testTag("binding_result")) } }
-        if (loginVisible && canLoginNetease) {
+        if (loginVisible) {
             if (state.binding?.bound == true) item {
                 Text("重新登录网易云", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -246,8 +192,8 @@ fun qrPixels(url: String, size: Int = 512): IntArray {
     }
     SettingsUiScope {
     if (unbind) MusicDialog("解绑网易云音乐？", { if (!busy) unbind = false }) {
-        Text(if (vm.container.apiClient.hasLocalNeteaseLogin) "将退出本机网易云账号，云端绑定和歌单会保留。"
-            else "将解除当前 CurrentMusic 账号的云端网易云绑定，已导入歌单会保留为快照。")
+        Text(if (vm.container.apiClient.hasLocalNeteaseLogin) "将退出本机网易云账号，我喜欢与歌单将不再同步。"
+            else "将解除网易云绑定，本机收藏将不再同步。")
         MusicDialogButton("确认解绑", onClick = { unbind = false; vm.unbind() }, enabled = !busy, modifier = Modifier.testTag("confirm_unbind"))
         BindingAction("取消", { unbind = false }, enabled = !busy)
     }

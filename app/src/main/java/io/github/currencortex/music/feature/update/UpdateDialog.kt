@@ -235,7 +235,6 @@ fun UpdateDialogContent(state: UpdateState, onDismiss: () -> Unit, onRetry: () -
 }
 
 private fun UpdateSource.compactLabel() = when (this) {
-    UpdateSource.CURRENTMUSIC -> "专用镜像"
     UpdateSource.GITHUB -> "GitHub 原站"
     UpdateSource.TBAP -> "TBAP 镜像"
     UpdateSource.GH_PROXY -> "GH-Proxy 镜像"

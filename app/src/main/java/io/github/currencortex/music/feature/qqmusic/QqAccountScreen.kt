@@ -36,8 +36,6 @@ import io.github.currencortex.music.feature.binding.BindingAction
 @Composable internal fun QqAccountScreen(container: AppContainer, onBack: () -> Unit, navigate: (String) -> Unit) {
     val repository = container.qqMusic
     val account by repository.state.collectAsStateWithLifecycle()
-    val project by container.accountRepository.state.collectAsStateWithLifecycle()
-    val revision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
     val settings by container.musicSettings.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val pageActive = LocalMusicPageActive.current
@@ -93,7 +91,7 @@ import io.github.currencortex.music.feature.binding.BindingAction
         }
         channelsLoading = false
     }
-    LaunchedEffect(revision, settings.server, account.loggedIn) {
+    LaunchedEffect(settings.server, account.loggedIn) {
         error = null
         if (!account.loggedIn) return@LaunchedEffect
         when (val result = appResult { repository.status() }) {
@@ -106,7 +104,7 @@ import io.github.currencortex.music.feature.binding.BindingAction
             is AppResult.Failure -> "unknown"
         }
     }
-    LaunchedEffect(revision, settings.server, account.revision, account.loggedIn) {
+    LaunchedEffect(settings.server, account.revision, account.loggedIn) {
         libraryCount = 0
         if (!account.loggedIn) return@LaunchedEffect
         when (val result = appResult { repository.playlists().size }) {
@@ -115,7 +113,7 @@ import io.github.currencortex.music.feature.binding.BindingAction
         }
     }
     // Keep the QR session alive while the user briefly switches to the scanner app.
-    LaunchedEffect(pageActive, canLogin, revision, settings.server, generation, channel, loginRequested) {
+    LaunchedEffect(pageActive, canLogin, settings.server, generation, channel, loginRequested) {
         qrImage = ""
         if (!loginRequested) qrStatus = ""
         if (!canLogin || !pageActive || !loginRequested || channel.isBlank()) return@LaunchedEffect

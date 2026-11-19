@@ -4,20 +4,18 @@ import io.github.currencortex.music.core.media.AudioQuality
 import io.github.currencortex.music.core.network.*
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import io.github.currencortex.music.data.settings.AudioProvider
-import io.github.currencortex.music.data.settings.AudioSourceAccess
 import io.github.currencortex.music.data.settings.LyricsSource
 import io.github.currencortex.music.feature.lyrics.model.LyricsDocument
 import kotlinx.coroutines.withTimeoutOrNull
 
+/**
+ * Song metadata, lyrics and playback resolution. Audio always comes from the platform
+ * itself (NetEase direct / QQ Music direct / Navidrome); there is no source-config layer.
+ */
 class MusicRepository(private val api: ApiClient,
-    private val audioAccess: () -> AudioSourceAccess = { AudioSourceAccess(AudioProvider.NETEASE) },
-    private val leiz: LeizAudioClient = LeizAudioClient(),
     private val navidrome: io.github.currencortex.music.data.navidrome.NavidromeRepository? = null,
-    private val lx: io.github.currencortex.music.data.lx.LxSourceStore? = null,
-    private val emby: io.github.currencortex.music.data.emby.EmbyRepository? = null,
     private val qqMusic: io.github.currencortex.music.data.qqmusic.QqMusicRepository? = null,
-    private val serverAudioSources: ServerAudioSources = ServerAudioSources(api)) {
+    private val kugou: io.github.currencortex.music.data.kugou.KugouRepository? = null) {
     val insights = SongInsightsRepository(api)
     suspend fun previewClip(song: Song): SongPreviewClip {
         val id = NeteaseSongActionsRepository.songId(song)
@@ -31,35 +29,21 @@ class MusicRepository(private val api: ApiClient,
     }
     suspend fun detail(song: Song): Song = when (song.musicSource) {
         MusicSource.QQ_MUSIC -> requireNotNull(qqMusic).detail(song)
-        MusicSource.EMBY -> requireNotNull(emby).detail(song)
         MusicSource.LOCAL -> song
         MusicSource.NAVIDROME -> requireNotNull(navidrome).detail(song)
         else -> if (song.neteaseCloud) song else detail(song.id)
     }
     suspend fun lyricsDocument(song: Song) = if (song.musicSource == MusicSource.QQ_MUSIC) appResult {
         requireNotNull(qqMusic).lyrics(song)
-    } else if (song.musicSource == MusicSource.EMBY) appResult {
-        io.github.currencortex.music.feature.lyrics.model.LyricsDocument(metadata = io.github.currencortex.music.feature.lyrics.model.LyricsMetadata(source = "Emby"))
     } else if (song.musicSource == MusicSource.NAVIDROME) appResult { requireNotNull(navidrome).lyrics(song) } else lyricsDocument(song.id)
     suspend fun source(song: Song, quality: AudioQuality, session: RequestSession? = null, refresh: Boolean = false,
         supportsDolby: Boolean = false): AudioSource {
-        if (song.musicSource == MusicSource.QQ_MUSIC) {
-            val access = audioAccess()
-            return if (access.provider == AudioProvider.LX) lxSource(song, quality, access)
-                else requireNotNull(qqMusic).source(song, quality)
-        }
+        if (song.musicSource == MusicSource.QQ_MUSIC) return requireNotNull(qqMusic).source(song, quality)
         if (song.musicSource == MusicSource.NAVIDROME) return requireNotNull(navidrome).source(song, quality)
-        if (song.musicSource == MusicSource.EMBY) return requireNotNull(emby).source(song)
+        if (song.musicSource == MusicSource.KUGOU)
+            return requireNotNull(kugou).audioSource(song.kugouHash, quality)
         if (song.neteaseCloud) return source(song.id, quality, session, refresh, supportsDolby, nativeCloud = true)
-        val access = audioAccess()
-        return if (access.provider == AudioProvider.LX) lxSource(song, quality, access)
-        else source(song.id, quality, session, refresh, supportsDolby)
-    }
-    private suspend fun lxSource(song: Song, quality: AudioQuality, access: AudioSourceAccess): AudioSource {
-        val result = try { requireNotNull(lx) { "落雪音源尚未初始化" }.source(song, quality, access.lxSourceId, access.lxSmartSwitch) }
-            catch (e: io.github.currencortex.music.data.lx.LxSourceException) { throw ApiException(ErrorKind.Server, userMessage = e.message) }
-        if (audioAccess().identity != access.identity) throw ApiException(ErrorKind.AudioSourceChanged)
-        return result
+        return source(song.id, quality, session, refresh, supportsDolby)
     }
     private fun parseDocument(raw: JsonObject): io.github.currencortex.music.feature.lyrics.model.LyricsDocument {
         val code = raw["code"]?.jsonPrimitive?.intOrNull
@@ -216,13 +200,6 @@ class MusicRepository(private val api: ApiClient,
     }
     suspend fun source(id: Long, quality: AudioQuality, session: RequestSession? = null, refresh: Boolean = false,
         supportsDolby: Boolean = false, nativeCloud: Boolean = false): AudioSource {
-        val access = audioAccess()
-        if (!nativeCloud && access.provider == AudioProvider.LX) return lxSource(Song(id, ""), quality, access)
-        if (!nativeCloud && access.provider == AudioProvider.LEIZ) {
-            val source = leiz.source(id, quality, access.key)
-            if (audioAccess().identity != access.identity) throw ApiException(ErrorKind.AudioSourceChanged)
-            return source
-        }
         val query = buildMap {
             put("id", "$id"); put("level", quality.value)
             if (quality == AudioQuality.AUTO && supportsDolby) put("supportsDolby", "1")
@@ -231,26 +208,12 @@ class MusicRepository(private val api: ApiClient,
         fun SongUrlDto.isUsableDolby() = url?.toHttpUrlOrNull() != null &&
             (freeTrialInfo == null || freeTrialInfo == JsonNull)
 
-        val imported = !nativeCloud && access.provider == AudioProvider.SERVER
-        val dto = if (imported) {
-            val source = requireNotNull(access.serverSource)
-            val owner = session ?: throw ApiException(ErrorKind.Unauthorized)
-            if (owner.server != access.serverSourceOwner?.server) throw ApiException(ErrorKind.Unauthorized)
-            serverAudioSources.resolve(source, id, quality, owner, refresh, supportsDolby)
-        } else {
-            val gateway = api.netease ?: throw ApiException(ErrorKind.NotFound)
-            ApiJson.decodeFromJsonElement<SongUrlDto>(gateway.request("GET", "ncm/song/url", query, null,
-                expectedRevision = session?.neteaseRevision))
-        }
+        val gateway = api.netease ?: throw ApiException(ErrorKind.NotFound)
+        val dto = ApiJson.decodeFromJsonElement<SongUrlDto>(gateway.request("GET", "ncm/song/url", query, null,
+            expectedRevision = session?.neteaseRevision))
         if (quality == AudioQuality.AUTO && dto.isDolby() && (!supportsDolby || !dto.isUsableDolby()))
             throw ApiException(ErrorKind.NeteaseAudioUnavailable)
-        if (imported && dto.freeTrialInfo != null && dto.freeTrialInfo != JsonNull)
-            throw ApiException(ErrorKind.NeteaseAudioUnavailable)
         val url = dto.url?.toHttpUrlOrNull() ?: throw ApiException(ErrorKind.NotFound)
-        if (imported && (url.username.isNotEmpty() || url.password.isNotEmpty()))
-            throw ApiException(ErrorKind.Parse)
-        if (!nativeCloud && audioAccess().identity != access.identity) throw ApiException(ErrorKind.AudioSourceChanged)
-        // Both sources report expi. Bound reuse to five minutes when a server omits it.
         return AudioSource(url.toString(), dto.level, maxOf(dto.sr, dto.sampleRate), maxOf(dto.ch, dto.channelCount), dto.type, dto.md5,
             validForSeconds = dto.expi.takeIf { it > 0 } ?: if (dto.level == "matched" || dto.source == "netease-match") 120 else 300,
             source = dto.source, requestedLevel = dto.requestedLevel, matchSource = dto.matchSource,

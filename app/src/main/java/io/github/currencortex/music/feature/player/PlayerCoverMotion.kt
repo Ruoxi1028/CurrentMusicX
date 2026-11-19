@@ -26,7 +26,7 @@ import io.github.currencortex.music.ui.component.MusicCover
 internal const val COVER_ARC_DURATION = 520
 
 // Refreshing the image or metadata of the same song must not launch another arc.
-internal fun Song.coverMotionKey() = listOf(musicSource, id, privateIdentity, emby?.id,
+internal fun Song.coverMotionKey() = listOf(musicSource, id, privateIdentity,
     navidrome?.id, localUri)
 
 internal data class PlayerCoverMotion(val song: Song?, val active: Boolean)

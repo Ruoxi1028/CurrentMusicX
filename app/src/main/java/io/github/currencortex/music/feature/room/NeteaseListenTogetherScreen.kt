@@ -70,7 +70,6 @@ internal data class NeteaseListenTogetherActions(
     val state by controller.state.collectAsStateWithLifecycle()
     val account by container.neteaseSessions.state.collectAsStateWithLifecycle()
     val playback by container.playerController.state.collectAsStateWithLifecycle()
-    val cmRoom by container.roomSession.state.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -211,7 +210,7 @@ internal data class NeteaseListenTogetherActions(
                             if (clip.itemCount > 0) clip.getItemAt(0).coerceToText(context)?.toString() else null
                         } }),
                     onBack = onBack, onSearch = onSearch, onPlayer = onPlayer, onBinding = onBinding,
-                    currentMusicRoomActive = cmRoom.detail != null, onDialogActive = { mainDialogActive = it },
+                    currentMusicRoomActive = false, onDialogActive = { mainDialogActive = it },
                     onHistory = { archiveController.history() }, initialInvitation = initialInvitation)
             }
         }

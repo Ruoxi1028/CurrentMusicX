@@ -59,7 +59,7 @@ val LocalRootTabSwipe = compositionLocalOf<Modifier> { Modifier }
 /** Retained root pages with individually trailing components, or the upstream crossfade. */
 @Composable fun RootTabTransition(selected: Int, states: SaveableStateHolder,
     onSelected: (Int) -> Unit, fade: Boolean = false, elastic: Boolean = true, content: @Composable (Int) -> Unit) {
-    val pager = rememberPagerState(initialPage = selected, pageCount = { 4 })
+    val pager = rememberPagerState(initialPage = selected, pageCount = { 3 })
     val easing = remember { CubicBezierEasing(.2f, 0f, .2f, 1f) }
     var viewport by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val motion = rememberRootComponentMotion(pager, enabled = elastic && !fade, viewport = { viewport })
@@ -128,7 +128,7 @@ val LocalRootTabSwipe = compositionLocalOf<Modifier> { Modifier }
         sceneLifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             // Returning to the root should first measure the visible tab. Keep the other
             // tabs warm for subsequent swipes once the containing scene is stationary.
-            while (cachedNeighbors < 3) {
+            while (cachedNeighbors < 2) {
                 withFrameNanos { }
                 cachedNeighbors++
             }
@@ -137,8 +137,8 @@ val LocalRootTabSwipe = compositionLocalOf<Modifier> { Modifier }
     HorizontalPager(pager, modifier = Modifier.fillMaxSize().testTag("root_tab_transition")
         .semantics { this[RootElasticStrainKey] = motion.strain }
         .onGloballyPositioned { viewport = it },
-        // Four fixed root pages fit in a bounded cache. Retaining them avoids composing and
-        // discarding the nested Discover pager in the middle of every Settings -> Me slide.
+        // Three fixed root pages fit in a bounded cache. Retaining them avoids composing and
+        // discarding nested pagers in the middle of every Settings -> Me slide.
         beyondViewportPageCount = cachedNeighbors, key = { it },
         userScrollEnabled = false, flingBehavior = fling) { tab ->
         states.SaveableStateProvider(tab) {

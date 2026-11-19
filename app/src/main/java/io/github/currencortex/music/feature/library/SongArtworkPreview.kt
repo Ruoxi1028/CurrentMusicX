@@ -22,22 +22,18 @@ import io.github.currencortex.music.ui.component.nativeui.*
     val nativeLikes by vm.container.neteaseSongActions.likedState.collectAsStateWithLifecycle()
     val qqLikes by vm.container.qqMusic.likedState.collectAsStateWithLifecycle()
     val likesUseNetease by vm.container.primaryLibrary.likesUseNetease.collectAsStateWithLifecycle()
-    val statuses by vm.statuses.collectAsStateWithLifecycle()
-    val embyLikes by vm.container.emby.likes.collectAsStateWithLifecycle()
     val navidromeLikes by vm.container.navidrome.likes.collectAsStateWithLifecycle()
     val likeBusy by vm.primaryLikeBusy.collectAsStateWithLifecycle()
     LaunchedEffect(song.id, song.musicSource, likesUseNetease) {
-        if (song.musicSource == MusicSource.EMBY) appResult { vm.container.emby.detail(song) }
-        else if (song.musicSource == MusicSource.QQ_MUSIC) appResult { vm.container.qqMusic.refreshLiked(song) }
+        if (song.musicSource == MusicSource.QQ_MUSIC) appResult { vm.container.qqMusic.refreshLiked(song) }
         else vm.refreshSearchLikes(listOf(song))
     }
     val liked = when (song.musicSource) {
         MusicSource.QQ_MUSIC -> song.id in qqLikes
-        MusicSource.EMBY -> embyLikes[song.id] == true
         MusicSource.NAVIDROME -> navidromeLikes[song.id] == true
         else -> if (song.musicSource == MusicSource.NETEASE)
             NeteaseSongActionsRepository.songId(song) in nativeLikes
-        else statuses[song.id]?.liked == true
+        else false
     }
     val insights = songInsightsMenuItems(vm.container.musicRepository.insights, song, playVersion)
     val more = buildList {

@@ -16,6 +16,11 @@ data class BindingMembershipState(val ownerId: Long = 0, val loading: Boolean = 
     val value: NeteaseMembership? = null, val error: String? = null)
 data class BindingMedalsState(val ownerId: Long = 0, val loading: Boolean = false,
     val value: NeteaseMedals? = null, val error: String? = null)
+
+/**
+ * NetEase account page: QR-code and phone-captcha login, membership/medals and the
+ * direct-library switch. Everything runs against the on-device NetEase gateway.
+ */
 class BindingViewModel(val container: AppContainer) : ViewModel() {
     val state = MutableStateFlow(BindingUiState())
     val busy = MutableStateFlow(false)
@@ -34,11 +39,7 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
     private var qrOwner: RequestSession? = null
     private var qrGeneration = 0L
     private var qrTerminal = false
-    private fun session() = RequestSession(container.accountRepository.server, container.accountRepository.token)
-    val canLoginNetease get() = container.accountRepository.state.value.account != null && !container.accountRepository.token.isNullOrBlank()
-    private fun requireCurrentMusicAccount() {
-        if (!canLoginNetease) throw ApiException(ErrorKind.CurrentMusicAccountRequired)
-    }
+    private fun session() = container.musicSession()
     init {
         viewModelScope.launch {
             container.neteaseSessions.ready.await()
@@ -48,12 +49,10 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             container.sessionRestored.await()
-            combine(container.accountRepository.sessionRevision,
-                container.musicSettings.state.map { it.server }.distinctUntilChanged()) { revision, server -> revision to server }
-                .collect {
-                    actionTask?.cancel(); busy.value = false; message.value = null
-                    clearQr(); state.value = BindingUiState(); reload()
-                }
+            container.neteaseSessions.state.map { it.revision }.distinctUntilChanged().collect {
+                actionTask?.cancel(); busy.value = false; message.value = null
+                clearQr(); state.value = BindingUiState(); reload()
+            }
         }
     }
     fun reload() {
@@ -82,8 +81,7 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
             val result = appResult { container.bindingRepository.membership() }
             if (token != membershipGeneration || container.neteaseSessions.state.value != owner) return@launch
             membership.value = when (result) {
-                is AppResult.Success -> if (result.value.userId == uid) BindingMembershipState(uid, value = result.value)
-                    else BindingMembershipState(uid, error = "会员信息暂不可用")
+                is AppResult.Success -> BindingMembershipState(uid, value = result.value)
                 is AppResult.Failure -> BindingMembershipState(uid, error = "会员信息暂不可用")
             }
         }
@@ -103,8 +101,7 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
             val result = appResult { container.bindingRepository.medals() }
             if (generation != medalsGeneration || container.neteaseSessions.state.value != owner) return@launch
             medals.value = when (result) {
-                is AppResult.Success -> if (result.value.userId == uid) BindingMedalsState(uid, value = result.value)
-                    else BindingMedalsState(uid, error = "勋章暂时无法加载")
+                is AppResult.Success -> BindingMedalsState(uid, value = result.value)
                 is AppResult.Failure -> BindingMedalsState(uid, error = "勋章暂时无法加载")
             }
         }
@@ -136,8 +133,6 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
         if (status.ok) "网易云登录态正常" else if (!status.bound) "尚未绑定网易云" else "网易云登录态已失效，请重新登录"
     }
     fun refresh() = action { expected -> container.bindingRepository.refresh(expected); "网易云登录态已刷新" }
-    fun syncProjectBinding() { viewModelScope.launch { container.bindingRepository.syncProjectBinding() } }
-    fun sync(expected: RequestSession = session()) = action { container.bindingRepository.sync(expected).message() }
     fun mainLibrary(value: Boolean) = viewModelScope.launch { container.musicSettings.setNeteaseMainLibrary(value) }
     fun reloadMusic() = action {
         container.bindingRepository.status()
@@ -146,7 +141,6 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
         "音乐库已更新"
     }
     private suspend fun afterBinding(expected: RequestSession): String {
-        container.importNeteaseAvatarAfterLogin(expected)
         if (container.musicSettings.snapshot().neteaseMainLibrary || container.apiClient.hasLocalNeteaseLogin) {
             val status = appResult { container.bindingRepository.status() }
             container.neteaseLibrary.invalidate()
@@ -156,19 +150,15 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
             }
                 else "绑定成功；暂时无法读取音乐库，请刷新重试"
         }
-        return when (val result = appResult { container.bindingRepository.sync(expected) }) {
-            is AppResult.Success -> "绑定成功；${result.value.message()}"
-            is AppResult.Failure -> "绑定成功；${failureMessage(result, "歌单同步")}，可再次同步"
-        }
+        return "绑定成功，可直接浏览网易云我喜欢与歌单"
     }
     fun unbind() = action { expected ->
         val local = container.apiClient.hasLocalNeteaseLogin
         container.bindingRepository.unbind(expected); clearQr()
-        if (local) "本机网易云账号已退出，云端绑定保留" else "网易云已解绑，已导入歌单保留为快照" }
+        if (local) "本机网易云账号已退出" else "网易云已解绑" }
     fun code(phone: String, country: String, alternate: Boolean = false) {
         if (SystemClock.elapsedRealtime() < state.value.codeUntil) return
         action(if (alternate) "备用验证码发送" else "验证码发送") { expected ->
-            requireCurrentMusicAccount()
             // A gateway timeout does not prove that the SMS was not delivered.
             state.update { it.copy(codeUntil = SystemClock.elapsedRealtime() + 60_000, codeFailed = false) }
             when (val result = appResult { container.bindingRepository.sendCode(phone, country, alternate, expected) }) {
@@ -181,14 +171,12 @@ class BindingViewModel(val container: AppContainer) : ViewModel() {
         }
     }
     fun phone(phone: String, captcha: String, country: String) = action("手机验证码登录") { expected ->
-        requireCurrentMusicAccount()
         container.bindingRepository.bindPhone(phone, captcha, country, expected)
         if (expected != session()) throw ApiException(ErrorKind.Unauthorized)
         state.update { it.copy(phoneBoundRevision = it.phoneBoundRevision + 1) }
         afterBinding(expected)
     }
     suspend fun qrSession() {
-        if (!canLoginNetease) { clearQr(); return }
         val expected = session()
         if (qrOwner != expected) clearQr()
         qrOwner = expected

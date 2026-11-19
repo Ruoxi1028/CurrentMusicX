@@ -23,7 +23,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable internal fun HomeLibraryShortcuts(navigate: (String) -> Unit, inRoom: Boolean,
     likesRoute: String = "lib/likes", playlistsRoute: String = "lib/playlists",
     fourthTitle: String? = null, fourthIcon: ImageVector = MusicIcons.Headphones,
-    fourthTag: String = "open_rooms", fourthRoute: String = "room/list") {
+    fourthTag: String = "open_rooms", fourthRoute: String = "room/invitation") {
     Column(Modifier.fillMaxWidth().testTag("home_shortcuts")) {
         SettingsGroup {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {

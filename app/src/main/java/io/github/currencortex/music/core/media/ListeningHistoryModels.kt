@@ -46,12 +46,12 @@ internal fun listeningHistorySlices(durationMs: Long, endedAt: Long, zone: ZoneI
 internal fun listeningHistorySong(song: Song): ListeningHistorySong {
     val identity = when (song.musicSource) {
         MusicSource.NAVIDROME -> listOf(song.navidrome?.identity.orEmpty(), song.navidrome?.id.orEmpty())
-        MusicSource.EMBY -> listOf(song.emby?.identity.orEmpty(), song.emby?.id.orEmpty())
         MusicSource.LOCAL -> listOf(song.localUri.ifBlank { song.id.toString() })
         MusicSource.NETEASE -> listOf(song.id.toString())
         MusicSource.QQ_MUSIC -> listOf(song.externalIds.qqMusicId?.takeIf { it.isNotBlank() } ?: song.id.toString())
         MusicSource.APPLE_MUSIC -> listOf(song.externalIds.appleMusicId?.takeIf { it.isNotBlank() } ?: song.id.toString())
         MusicSource.SPOTIFY -> listOf(song.externalIds.spotifyId?.takeIf { it.isNotBlank() } ?: song.id.toString())
+        MusicSource.KUGOU -> listOf(song.kugouHash.takeIf { it.isNotBlank() } ?: song.id.toString())
     }
     // Length-prefix fields so different provider/account/track combinations cannot alias.
     val raw = (listOf(song.musicSource.name) + identity).joinToString("") { "${it.length}:$it" }

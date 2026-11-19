@@ -185,7 +185,7 @@ class QqMusicRepository(private val api: ApiClient, private val owner: () -> Req
             return raw
         }
         if ((requiresSession || login) && expected.token.isNullOrBlank())
-            throw ApiException(ErrorKind.Forbidden, userMessage = "请先登录 CurrentMusic 账号，再连接 QQ 音乐")
+            throw ApiException(ErrorKind.Forbidden, userMessage = "请先扫码登录 QQ 音乐")
         val authenticated = requiresSession || login
         val raw = try {
             suspend fun requestOnce() = api.request(method, "qqmusic/$path", query, body, authenticated,

@@ -42,7 +42,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     val hotSongs = state.overview?.songs?.takeIf { it.isNotEmpty() } ?: state.songs.take(50)
     val previewAlbums = state.overview?.albums?.takeIf { it.isNotEmpty() } ?: state.albums.take(6)
     val playingSongs = if (tab == "home") hotSongs else state.songs
-    LaunchedEffect(state.songs, hotSongs) { library.refreshStatuses((state.songs + hotSongs).distinctBy { it.id }) }
     LaunchedEffect(filter, state.albumOrder) { albumsScroll.scrollToItem(0) }
     BackHandler(encyclopedia) { encyclopedia = false }
     PreloadMusicCovers(if (tab == "albums") albums.take(10).map { it.cover } else state.songs.take(12).map { it.cover })

@@ -35,10 +35,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import io.github.currencortex.music.AppContainer
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
-import io.github.currencortex.music.data.lx.LxPlatform
-import io.github.currencortex.music.data.lx.LxSourceInfo
-import io.github.currencortex.music.data.settings.AudioProvider
-import io.github.currencortex.music.data.settings.AudioProviderState
 import io.github.currencortex.music.data.song.*
 import io.github.currencortex.music.ui.component.MusicTextAction
 import io.github.currencortex.music.ui.component.qualityFileSummary
@@ -59,13 +55,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     var afterDismiss by remember { mutableStateOf<(() -> Unit)?>(null) }
     val dismiss by rememberUpdatedState(onDismiss)
     var songQualities by remember(song?.id, song?.musicSource) { mutableStateOf<Set<AudioQuality>?>(null) }
-    val nativeQqQualitiesEnabled = qqNativeQualitiesEnabled(container)
-    LaunchedEffect(isQq, song?.id, song?.musicSource, container, nativeQqQualitiesEnabled) {
-        songQualities = if (isQq && song != null && container != null && nativeQqQualitiesEnabled)
+    LaunchedEffect(isQq, song?.id, song?.musicSource, container) {
+        songQualities = if (isQq && song != null && container != null)
             (appResult { container.qqMusic.qualities(song) } as? AppResult.Success)?.value?.takeIf { it.isNotEmpty() }
         else null
     }
-    val effectiveAvailable = if (isQq) songQualities ?: available ?: qqAudioQualities(container) else null
+    val effectiveAvailable = if (isQq) songQualities ?: available ?: qqNativeQualities else null
     LaunchedEffect(effectiveAvailable, selected) {
         if (isQq && effectiveAvailable != null && selected != AudioQuality.AUTO && selected !in effectiveAvailable)
             onSelect(AudioQuality.AUTO)
@@ -107,48 +102,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     }
 }
 
-@Composable private fun qqNativeQualitiesEnabled(container: AppContainer?): Boolean {
-    if (container == null) return false
-    val access by container.audioSettings.state.collectAsStateWithLifecycle()
-    return access.provider != AudioProvider.LX
-}
-
-@Composable private fun qqAudioQualities(container: AppContainer?): Set<AudioQuality> {
-    if (container == null) return qqNativeQualities
-    val access by container.audioSettings.state.collectAsStateWithLifecycle()
-    if (access.provider != AudioProvider.LX) return qqNativeQualities
-    val sources by container.lxSources.state.collectAsStateWithLifecycle()
-    return qqAudioQualities(access, sources)
-}
-
 private val qqQualityOrder = listOf(
     AudioQuality.DOLBY, AudioQuality.LOSSLESS, AudioQuality.EXHIGH, AudioQuality.STANDARD,
     AudioQuality.QQ_NAC, AudioQuality.QQ_MASTER, AudioQuality.QQ_SURROUND, AudioQuality.QQ_STUDIO,
     AudioQuality.HIRES, AudioQuality.QQ_DTS_X,
 )
-private val qqNativeQualities = qqQualityOrder.toCollection(linkedSetOf())
-
-internal fun qqAudioQualities(access: AudioProviderState, sources: List<LxSourceInfo>): Set<AudioQuality> {
-    if (access.provider != AudioProvider.LX) return qqNativeQualities
-    val supported = sources.asSequence().filter { access.lxSmartSwitch || it.id == access.lxSourceId }
-        .flatMap { it.qualities(LxPlatform.QQ_MUSIC).asSequence() }
-        .mapNotNull { quality -> when (quality) {
-            "128k" -> AudioQuality.STANDARD
-            "320k" -> AudioQuality.EXHIGH
-            "flac" -> AudioQuality.LOSSLESS
-            "flac24bit", "hires" -> AudioQuality.HIRES
-            "atmos" -> AudioQuality.QQ_STUDIO
-            "atmos_plus" -> AudioQuality.QQ_SURROUND
-            "master" -> AudioQuality.QQ_MASTER
-            "nac" -> AudioQuality.QQ_NAC
-            "dtsx" -> AudioQuality.QQ_DTS_X
-            "dolby" -> AudioQuality.DOLBY
-            else -> null
-        } }.toSet()
-    val available = linkedSetOf<AudioQuality>()
-    qqQualityOrder.forEach { if (it in supported) available += it }
-    return available
-}
+internal val qqNativeQualities = qqQualityOrder.toCollection(linkedSetOf())
 
 @Composable internal fun AudioQualityChoices(selected: AudioQuality, onSelect: (AudioQuality) -> Unit,
     enabled: Boolean = true, onNetwork: (() -> Unit)? = null, modifier: Modifier = Modifier,

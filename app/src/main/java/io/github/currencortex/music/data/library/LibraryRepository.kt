@@ -11,17 +11,17 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Server data is authoritative. Like toggles are serialized and rollback on failure. */
-class LibraryRepository(private val api: ApiClient, private val accountId: () -> Long,
-    private val session: () -> RequestSession) {
-    val statuses = MutableStateFlow<Map<Long, SongStatus>>(emptyMap())
+/**
+ * Public NetEase catalog metadata plus the daily/recent feeds. There is no
+ * CurrentMusic account layer: playlists, likes and play reports live on the
+ * platforms themselves (NetEase direct, QQ Music, Navidrome).
+ */
+class LibraryRepository(private val api: ApiClient, private val session: () -> RequestSession) {
     val revision = MutableStateFlow(0L)
     private val mutationMutex = Mutex()
     private val reads = SessionReadCache(session, { revision.value })
-    val hasCurrentMusicAccount get() = accountId() > 0 && session().token != null
     fun clearReads() = reads.clear()
     fun invalidate() { reads.clear(); revision.update { it + 1 } }
-    fun clearSession() { reads.clear(); statuses.value = emptyMap(); revision.update { it + 1 } }
     private suspend inline fun <reified T> read(path: String, expected: RequestSession, query: Map<String, String> = emptyMap()): T =
         api.decode(api.request("GET", path, query, authenticated = true, expectedSession = expected))
     private suspend fun <T : Any> backgroundRead(key: String, fresh: Boolean = false, load: suspend (RequestSession) -> T): T =
@@ -37,96 +37,10 @@ class LibraryRepository(private val api: ApiClient, private val accountId: () ->
             (recommended + daily).distinctBy { it.id }.take(12)
         Daily(daily, forYou, d.artists)
     }
-    suspend fun recent(fresh: Boolean = false): List<Song> = backgroundRead("recent", fresh) {
-        // Project play reports are already uploaded separately from NetEase scrobbles.
-        // A project login must read the same cross-device history that the web client uses.
-        (if (it.token != null && !api.nativeMediaEnabled) read<SongListDto>("plays/recent", it, mapOf("limit" to "50"))
-        else api.netease?.let { native -> api.decode<SongListDto>(native.recent(expectedRevision = it.neteaseRevision)) }
-            ?: read<SongListDto>("plays/recent", it, mapOf("limit" to "50"))).songs.map(SongDto::toDomain)
-    }
-    suspend fun likedSongs(fresh: Boolean = false): List<Song> = backgroundRead("likes", fresh) { read<SongListDto>("likes/mine", it).songs.map(SongDto::toDomain) }
-    suspend fun playlists(): List<Playlist> = backgroundRead("playlists") { read<PlaylistsDto>("playlists", it).playlists.map(PlaylistDto::domain) }
-    suspend fun playlist(id: Long, fresh: Boolean = false): Playlist = backgroundRead("playlist/$id", fresh) { read<PlaylistDto>("playlists/$id", it).domain() }
-    suspend fun refreshStatus(ids: List<Long>) {
-        if (accountId() == 0L) return
-        val expected = session()
-        ids.filter { it > 0 }.distinct().chunked(100).forEach { chunk ->
-            if (expected != session()) return
-            val d = api.get<SongStatusDto>("songs/status", mapOf("ids" to chunk.joinToString(",")), true)
-            if (expected == session()) statuses.update { old -> old + chunk.associateWith { id ->
-                old[id]?.takeIf { it.pending } ?: SongStatus(id in d.liked, id in d.faved)
-            } }
-        }
-    }
-    suspend fun toggleLike(song: Song): AppResult<Unit> = changeLike(song, null)
-    suspend fun setLiked(song: Song, liked: Boolean, expectedSession: RequestSession? = null): AppResult<Unit> =
-        changeLike(song, liked, expectedSession)
-    private suspend fun changeLike(song: Song, desired: Boolean?, expectedSession: RequestSession? = null): AppResult<Unit> = mutationMutex.withLock {
-        if (song.musicSource == MusicSource.QQ_MUSIC) return@withLock AppResult.Failure(ErrorKind.NotFound,
-            message = "请在 QQ 音乐的我喜欢中管理这首歌")
-        if (accountId() == 0L) return@withLock AppResult.Failure(ErrorKind.Unauthorized)
-        val expected = session()
-        if (expectedSession != null && expectedSession != expected) return@withLock AppResult.Failure(ErrorKind.Unauthorized)
-        // Read before toggling: a default false must not invert an existing server true.
-        val loaded = appResult { refreshStatus(listOf(song.id)) }
-        if (loaded is AppResult.Failure) return@withLock loaded
-        if (expected != session()) return@withLock AppResult.Failure(ErrorKind.Unauthorized)
-        val before = statuses.value[song.id] ?: SongStatus()
-        if (desired != null && before.liked == desired) return@withLock AppResult.Success(Unit)
-        statuses.update { it + (song.id to before.copy(liked = !before.liked, pending = true)) }
-        val result = try { appResult {
-            api.request("POST", "likes/${song.id}", body = metadata(song), authenticated = true, expectedSession = expected)
-        } } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            if (expected == session()) statuses.update { it + (song.id to before) }
-            throw cancelled
-        }
-        if (expected == session()) {
-            statuses.update { it + (song.id to if (result is AppResult.Success) (it[song.id] ?: before).copy(
-                liked = (result.value as? JsonObject)?.get("on")?.jsonPrimitive?.booleanOrNull ?: !before.liked, pending = false) else before) }
-            if (result is AppResult.Success) revision.update { it + 1 }
-        }
-        when (result) { is AppResult.Success -> AppResult.Success(Unit); is AppResult.Failure -> result }
-    }
-    suspend fun create(name: String, description: String) {
-        require(name.trim().isNotEmpty())
-        val expected = session()
-        api.request("POST", "playlists", body = buildJsonObject { put("name", name.trim()); put("description", description) }, authenticated = true, expectedSession = expected)
-        revision.update { it + 1 }
-    }
-    private suspend fun editable(id: Long, expected: RequestSession) {
-        if (expected != session() || !playlist(id, fresh = true).editable(accountId()) || expected != session()) throw ApiException(ErrorKind.Forbidden)
-    }
-    suspend fun rename(id: Long, name: String) {
-        require(name.trim().isNotEmpty()); val expected = session(); editable(id, expected)
-        api.request("PUT", "playlists/$id", body = buildJsonObject { put("name", name.trim()) }, authenticated = true, expectedSession = expected)
-        revision.update { it + 1 }
-    }
-    suspend fun delete(id: Long) {
-        val expected = session(); editable(id, expected); api.request("DELETE", "playlists/$id", authenticated = true, expectedSession = expected); revision.update { it + 1 }
-    }
-    suspend fun add(id: Long, songs: List<Song>) {
-        require(songs.none { it.musicSource == MusicSource.QQ_MUSIC }) { "QQ 音乐歌曲只能加入 QQ 歌单" }
-        val expected = session(); editable(id, expected)
-        api.request("POST", "playlists/$id/tracks", body = buildJsonObject { put("songs", JsonArray(songs.map(::metadata))) }, authenticated = true, expectedSession = expected)
-        revision.update { it + 1 }
-    }
-    suspend fun remove(id: Long, song: Song) {
-        val expected = session(); editable(id, expected)
-        api.request("DELETE", "playlists/$id/tracks", body = buildJsonObject { put("songs", JsonArray(listOf(metadata(song)))) }, authenticated = true, expectedSession = expected)
-        revision.update { it + 1 }
-    }
-    suspend fun recordPlay(song: Song, expected: RequestSession = session()) {
-        // CurrentMusic statistics must also be updated when the music library uses native Netease.
-        if (accountId() != 0L && !song.video && !song.privateLibrary && song.musicSource != MusicSource.QQ_MUSIC) {
-            val body = JsonObject(metadata(song) + ("platform" to JsonPrimitive("x")))
-            api.request("POST", "plays/${song.id}", body = body, authenticated = true, expectedSession = expected)
-            revision.update { it + 1 }
-        }
-    }
-    suspend fun listen(song: Song, milliseconds: Long, expected: RequestSession = session()) {
-        if (accountId() != 0L && !song.video && !song.privateLibrary && song.musicSource != MusicSource.QQ_MUSIC && milliseconds > 0) api.request("POST", "plays/${song.id}",
-            body = buildJsonObject { put("ms", milliseconds); put("platform", "x") },
-            authenticated = true, expectedSession = expected)
+    suspend fun recent(fresh: Boolean = false): List<Song> = backgroundRead("recent", fresh) { expected ->
+        (if (expected.token != null && !api.nativeMediaEnabled) read<SongListDto>("plays/recent", expected, mapOf("limit" to "50"))
+        else api.netease?.let { native -> api.decode<SongListDto>(native.recent(expectedRevision = expected.neteaseRevision)) }
+            ?: read<SongListDto>("plays/recent", expected, mapOf("limit" to "50"))).songs.map(SongDto::toDomain)
     }
     suspend fun artist(id: Long, offset: Int = 0): Artist {
         val d = api.get<ArtistDto>("ncm/artist", mapOf("id" to "$id", "offset" to "$offset", "limit" to "100"))

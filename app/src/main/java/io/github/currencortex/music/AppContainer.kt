@@ -19,18 +19,13 @@ import kotlinx.coroutines.CompletableDeferred
 import io.github.currencortex.music.core.network.*
 import io.github.currencortex.music.core.media.*
 import io.github.currencortex.music.core.security.SecureTokenStore
-import io.github.currencortex.music.data.auth.*
 import io.github.currencortex.music.data.effects.NeteaseEffectsAssetRepository
 import io.github.currencortex.music.data.effects.NeteaseEffectsInstallState
 import io.github.currencortex.music.data.song.MusicRepository
 import io.github.currencortex.music.data.song.MusicSource
-import io.github.currencortex.music.data.song.ServerAudioSourceOwner
-import io.github.currencortex.music.data.song.ServerAudioSources
 import io.github.currencortex.music.data.local.MusicDatabase
 import io.github.currencortex.music.data.settings.MusicSettingsRepository
-import io.github.currencortex.music.data.settings.AudioProvider
 import io.github.currencortex.music.data.settings.OriginalEffectPreferenceKeys
-import io.github.currencortex.music.data.settings.AudioSourceAccess
 import androidx.room.Room
 import kotlinx.serialization.decodeFromString
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,7 +60,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
 
     val updateTransfer = io.github.currencortex.music.core.update.UpdateTransfer(
         io.github.currencortex.music.core.update.UpdateDownloader(okhttp3.OkHttpClient(), java.io.File(context.cacheDir, "updates"),
-            urlFor = ::updateAssetUrl, cache = io.github.currencortex.music.core.update.UpdateArtifactCache(java.io.File(context.cacheDir, "updates"))),
+            cache = io.github.currencortex.music.core.update.UpdateArtifactCache(java.io.File(context.cacheDir, "updates"))),
         io.github.currencortex.music.core.update.AndroidUpdateInstaller(context.applicationContext), playerScope,
         if (storageNamespace.isEmpty()) io.github.currencortex.music.core.update.WorkManagerUpdateBackground(context) else null)
     val logger = AppLogger(context)
@@ -74,10 +69,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         java.io.File(context.filesDir, "local-music$storageSuffix.json"))
     val storageSettings = StorageSettingsRepository(settingsStore, appScope)
     val serverRouter = CurrentMusicServerRouter(serverCheck)
-    fun updateAssetUrl(release: io.github.currencortex.music.core.update.AppRelease,
-        source: io.github.currencortex.music.core.update.UpdateSource): String = source.url(release,
-        io.github.currencortex.music.core.update.UpdateProxy.forServer(serverRouter.resolve(musicSettings.state.value.server)))
-    val updateSourceCheck = io.github.currencortex.music.core.update.UpdateSourceProbe(urlFor = ::updateAssetUrl)
+    val updateSourceCheck = io.github.currencortex.music.core.update.UpdateSourceProbe()
 
     val audioOutput = io.github.currencortex.music.data.settings.AudioOutputSettingsRepository(settingsStore, appScope)
     val audioDiagnostics = io.github.currencortex.music.core.media.engine.AudioDiagnostics()
@@ -195,23 +187,11 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             }
         }
     }
-    val accountVault = EncryptedAccountVault.create(context, storageSuffix, settingsStore, appScope)
-    val accountRepository = AccountRepository(SecureTokenStore(context, storageSuffix), appScope, accountVault)
-    val audioSettings = io.github.currencortex.music.data.settings.AudioSourceSettings(settingsStore,
-        SecureTokenStore(context, ".leiz$storageSuffix"), appScope, ::serverAudioSourceOwner)
-    val lxSources = io.github.currencortex.music.data.lx.LxSourceStore(context,
-        SecureTokenStore(context, ".lx-sources$storageSuffix"), appScope)
     val neteaseSessions = NeteaseSessionStore(SecureTokenStore(context, ".netease$storageSuffix"), appScope)
     private val neteaseTransport = NeteaseTransport(neteaseSessions, neteaseEndpoints,
         log = { logger.info("Network", it) })
     val nativeNetease = if (useNativeNetease) NeteaseGateway(neteaseTransport) else null
-    val neteaseTasks = io.github.currencortex.music.data.netease.tasks.NeteaseTaskRepository(neteaseTransport)
     internal val neteaseListening = io.github.currencortex.music.data.netease.listening.NeteaseListeningRepository(neteaseTransport)
-    val playlistImporter = io.github.currencortex.music.data.netease.playlistimport.NeteasePlaylistImportRepository(neteaseTransport)
-    val neteaseTaskPreferences = io.github.currencortex.music.data.netease.tasks.NeteaseTaskPreferences(settingsStore)
-    val neteaseTasksEnabled = neteaseTaskPreferences.enabled.stateIn(appScope, SharingStarted.Eagerly, null)
-    val neteaseTaskAutomation = io.github.currencortex.music.data.netease.tasks.NeteaseTaskAutomation(neteaseTasks,
-        neteaseTaskPreferences, appForeground, appScope, enabled = neteaseTaskPreferences.enabled)
     val neteaseSoundEffects = io.github.currencortex.music.data.effects.NeteaseSoundEffectsRepository(neteaseTransport)
     val originalMoodModels = io.github.currencortex.music.data.effects.OriginalMoodModelRepository(originalEngineContext, neteaseTransport)
     val originalAiMasterRepository = io.github.currencortex.music.data.effects.OriginalAiMasterRepository(originalEngineContext, neteaseTransport)
@@ -223,88 +203,76 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         originalEngineContext.getSystemService(android.media.AudioManager::class.java)
     internal suspend fun requestOriginalEffectsPage(path: String, params: kotlinx.serialization.json.JsonObject) =
         neteaseTransport.request(path, params, clientProfile = NeteaseClientProfile.ANDROID).body
+    /** Sessions carry no account token: the app logs into music platforms directly. */
     fun musicSession(authenticated: Boolean = true) = RequestSession(
-        accountRepository.server.ifBlank { musicSettings.state.value.server },
-        accountRepository.token.takeIf { authenticated }, nativeNetease?.sessions?.state?.value?.revision)
-    /** Community features belong to the project account, independently of the audio provider. */
-    fun projectSession() = RequestSession(
-        accountRepository.server.ifBlank { musicSettings.state.value.server }, accountRepository.token)
-    internal fun serverAudioSourceOwner(): ServerAudioSourceOwner? {
-        val account = accountRepository.state.value.account ?: return null
-        val session = projectSession()
-        return if (session.token.isNullOrBlank()) null else ServerAudioSourceOwner(session.server, account.id)
-    }
-    private fun directNeteaseSession() =
-        RequestSession("https://music.163.com/", null, neteaseSessions.state.value.revision)
-    fun audioSession() = if (audioSettings.access().provider == AudioProvider.NETEASE)
-        directNeteaseSession()
-        else RequestSession(accountRepository.server.ifBlank { musicSettings.state.value.server }, accountRepository.token)
+        musicSettings.state.value.server, null, nativeNetease?.sessions?.state?.value?.revision)
     val apiClient = ApiClient(
-        server = { accountRepository.server.ifBlank { musicSettings.state.value.server } },
-        token = { accountRepository.token }, onUnauthorized = accountRepository::expired,
+        server = { musicSettings.state.value.server },
+        token = { null },
         log = { logger.info("Network", it) },
         client = apiHttpClient ?: ApiClient.defaultHttpClient(),
         netease = nativeNetease,
         nativeMedia = {
             val session = neteaseSessions.state.value
-            val provider = audioSettings.access().provider
-            (provider == AudioProvider.NETEASE || provider == AudioProvider.SERVER) && session.loggedIn && !session.stale
+            session.loggedIn && !session.stale
         },
-        currentMusicAccountReady = { accountRepository.state.value.account != null && !accountRepository.token.isNullOrBlank() },
-        currentMusicSessionRevision = { accountRepository.sessionRevision.value },
         routeServer = serverRouter::resolve,
     )
-    val authRepository = AuthRepository(apiClient, accountRepository, "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
-        persistServer = musicSettings::setServer, persistAccount = musicSettings::setAccount)
     val navidrome = io.github.currencortex.music.data.navidrome.NavidromeRepository(SecureTokenStore(context, ".navidrome$storageSuffix"), appScope)
-    val emby = io.github.currencortex.music.data.emby.EmbyRepository(SecureTokenStore(context, ".emby$storageSuffix"), appScope)
-    val navidromeMedia = okhttp3.OkHttpClient.Builder().addInterceptor(navidrome.client.mediaInterceptor()).addInterceptor(emby.client.mediaInterceptor()).build()
-    val qqMusic = io.github.currencortex.music.data.qqmusic.QqMusicRepository(apiClient, ::projectSession,
+    val navidromeMedia = okhttp3.OkHttpClient.Builder().addInterceptor(navidrome.client.mediaInterceptor()).build()
+    val qqMusic = io.github.currencortex.music.data.qqmusic.QqMusicRepository(apiClient, ::musicSession,
         SecureTokenStore(context, ".qqmusic$storageSuffix"),
         io.github.currencortex.music.data.qqmusic.QqDirectMusicClient(
             apiHttpClient ?: ApiClient.defaultHttpClient(),
             log = { logger.info("Network", it) },
         ))
-    val serverAudioSources = ServerAudioSources(apiClient)
-    val musicRepository = MusicRepository(apiClient, audioSettings::access, navidrome = navidrome,
-        lx = lxSources, emby = emby, qqMusic = qqMusic, serverAudioSources = serverAudioSources)
-    internal fun qqAudioIdentity(access: AudioSourceAccess = audioSettings.access()): String =
-        qqAudioIdentity(qqMusic.audioIdentity, access)
-
-    private fun qqAudioIdentity(accountIdentity: String, access: AudioSourceAccess): String =
-        if (access.provider == AudioProvider.LX) "$accountIdentity:${access.identity}" else accountIdentity
+    private val kugouVault = SecureTokenStore(context, ".kugou$storageSuffix")
+    val kugou = io.github.currencortex.music.data.kugou.KugouRepository(
+        persist = { saved -> appScope.launch {
+            if (saved.loggedIn && saved.userid.isNotBlank())
+                kugouVault.write(io.github.currencortex.music.core.network.ApiJson.encodeToString(
+                    io.github.currencortex.music.data.kugou.KugouAccountState.serializer(), saved))
+            else kugouVault.clear()
+        } })
+    val musicRepository = MusicRepository(apiClient, navidrome = navidrome, qqMusic = qqMusic, kugou = kugou)
+    internal fun qqAudioIdentity(): String = qqMusic.audioIdentity
+    /** folia-style provider account hub: the app logs into music platforms, not into itself. */
+    val providerHub = io.github.currencortex.music.feature.provider.ProviderAccountHub(
+        active = { io.github.currencortex.music.feature.provider.OnlineProviderId.from(
+            when (musicSettings.state.value.musicPlatform) {
+                io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC -> "qq"
+                else -> "netease"
+            }) },
+        netease = { neteaseSessions.state.value },
+        qq = { qqMusic.state.value },
+        kugou = { kugou.state.value },
+    )
 
     fun audioRequest(song: io.github.currencortex.music.data.song.Song, quality: AudioQuality, supportsDolby: Boolean = false): AudioRequest {
         if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC) {
             qqMusic.selectOwner()
             val qqQuality = quality.takeIf { it.qqOnly } ?: musicSettings.state.value.qqQuality
-            return AudioRequest(song.id, qqQuality, accountRepository.state.value.account?.id ?: 0L,
+            return AudioRequest(song.id, qqQuality, 0L,
                 qqMusic.session(), qqAudioIdentity(), song)
         }
         if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME)
             return AudioRequest(song.id, quality, 0L, navidrome.session(), "navidrome:" + navidrome.state.value.identity, song)
-        if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY)
-            return AudioRequest(song.id, quality, 0L, emby.session(), "emby:" + emby.state.value.identity, song)
+        if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.KUGOU)
+            return AudioRequest(song.id, quality, 0L,
+                RequestSession("https://kugou.com/", kugou.state.value.userid.takeIf { kugou.state.value.loggedIn },
+                    kugou.state.value.revision), "kugou", song)
         if (song.neteaseCloud) {
             val owner = neteaseSessions.state.value
             return AudioRequest(song.id, quality, owner.profile?.uid ?: 0L,
                 RequestSession("https://music.163.com/", null, owner.revision), "netease-cloud", song,
                 supportsDolby = supportsDolby && quality == AudioQuality.AUTO)
         }
-        val access = audioSettings.access()
-        val directNetease = access.provider == AudioProvider.NETEASE
-        val preferDolby = supportsDolby && quality == AudioQuality.AUTO &&
-            song.musicSource != io.github.currencortex.music.data.song.MusicSource.LOCAL &&
-            (directNetease || access.provider == AudioProvider.SERVER)
-        if (directNetease) {
-            // Snapshot UID and revision together so a concurrent account switch cannot mix cache owners.
-            val owner = neteaseSessions.state.value
-            return AudioRequest(song.id, quality, owner.profile?.uid ?: 0L,
-                RequestSession("https://music.163.com/", null, owner.revision),
-                AudioSourceAccess(AudioProvider.NETEASE).identity, song, supportsDolby = preferDolby)
-        }
-        return AudioRequest(song.id, quality, accountRepository.state.value.account?.id ?: 0L, audioSession(), access.identity, song,
-            supportsDolby = preferDolby)
+        // Snapshot UID and revision together so a concurrent account switch cannot mix cache owners.
+        val owner = neteaseSessions.state.value
+        return AudioRequest(song.id, quality, owner.profile?.uid ?: 0L,
+            RequestSession("https://music.163.com/", null, owner.revision),
+            "netease", song, supportsDolby = supportsDolby && quality == AudioQuality.AUTO &&
+                song.musicSource != io.github.currencortex.music.data.song.MusicSource.LOCAL)
     }
     val announcements = io.github.currencortex.music.data.announcement.AnnouncementRepository(apiClient)
     val announcementPreferences = io.github.currencortex.music.data.announcement.AnnouncementPreferences(settingsStore)
@@ -316,46 +284,25 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
     val neteaseSongActions = io.github.currencortex.music.data.song.NeteaseSongActionsRepository(apiClient) {
         musicSession()
     }
-    val playlistLikeImporter by lazy {
-        io.github.currencortex.music.data.library.PlaylistLikeImporter(playerScope, { musicSession() },
-            { accountRepository.state.value.account?.id ?: 0 },
-            { libraryRepository.playlist(it, fresh = true) },
-            { expected ->
-                val uid = neteaseSongActions.boundUid(expected)
-                val liked = neteaseSongActions.likedIds(fresh = true)
-                if (neteaseSongActions.boundUid(expected) != uid)
-                    throw ApiException(ErrorKind.NeteaseSessionChanged)
-                io.github.currencortex.music.data.library.PlaylistLikeTarget(uid, liked)
-            },
-            { song, expected, uid ->
-                val id = io.github.currencortex.music.data.song.NeteaseSongActionsRepository.songId(song)
-                    ?: throw ApiException(ErrorKind.NotFound)
-                neteaseSongActions.setLiked(id, true, expected, song, expectedUid = uid)
-            })
-    }
     val audioCache = AudioCache(context.applicationContext, java.io.File(context.cacheDir, "audio$storageSuffix"), navidromeMedia,
         initialMaxBytes = AudioCache.UNLIMITED_BYTES, initialCapacityReady = false)
     val storage = io.github.currencortex.music.core.storage.StorageStore(context.applicationContext, audioCache)
+    // NetEase audio resolves against the on-device login, matching audioRequest's session shape.
     val audioSources = AudioSourceResolver(audioCache,
-        { audioSession() },
-        currentProvider = { audioSettings.access().identity },
+        { RequestSession("https://music.163.com/", null, neteaseSessions.state.value.revision) },
+        currentProvider = { "netease" },
         validateRequest = { request -> request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC }?.let {
             qqMusic.selectOwner()
-            if (request.session != qqMusic.session() ||
-                request.accountId != (accountRepository.state.value.account?.id ?: 0L)) false
+            if (request.session != qqMusic.session()) false
             else {
-                val accountIdentity = qqMusic.audioIdentity
-                if (request.providerIdentity.substringBefore(":lx:") != accountIdentity) false
-                else {
-                    if (request.providerIdentity != qqAudioIdentity(accountIdentity, audioSettings.access()))
-                        throw ApiException(ErrorKind.AudioSourceChanged)
-                    true
-                }
+                if (request.providerIdentity != qqMusic.audioIdentity) false
+                else true
             }
+        } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.KUGOU }?.let {
+            val account = kugou.state.value
+            request.session == RequestSession("https://kugou.com/", account.userid.takeIf { account.loggedIn }, account.revision)
         } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME }?.let {
             navidrome.accepts(it) && request.session == navidrome.session() && request.providerIdentity == "navidrome:" + navidrome.state.value.identity
-        } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY }?.let {
-            emby.accepts(it) && request.session == emby.session() && request.providerIdentity == "emby:" + emby.state.value.identity
         } ?: request.song?.takeIf { it.neteaseCloud }?.let {
             val owner = neteaseSessions.state.value
             owner.loggedIn && !owner.stale && request.accountId == owner.profile?.uid &&
@@ -366,8 +313,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             musicRepository.source(it, request.quality, request.session, request.refresh, request.supportsDolby)
         } ?: musicRepository.source(request.songId, request.quality, request.session, request.refresh, request.supportsDolby) },
         load = { id, quality, session -> musicRepository.source(id, quality, session) })
-    val libraryRepository = io.github.currencortex.music.data.library.LibraryRepository(apiClient,
-        { accountRepository.state.value.account?.id ?: 0L }, { musicSession() })
+    val libraryRepository = io.github.currencortex.music.data.library.LibraryRepository(apiClient, { musicSession() })
     val todayListening = TodayListeningStore(context.applicationContext, storageSuffix)
     val listeningReports = run {
         val listened = mutableMapOf<Pair<Long, RequestSession>, Long>()
@@ -375,12 +321,8 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         ListeningReportQueue(appScope,
             currentSession = { song -> if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME)
                 navidrome.session() else musicSession() },
-            currentMusic = { song, ms, owner ->
-                if (ms == null) libraryRepository.recordPlay(song, owner) else libraryRepository.listen(song, ms, owner)
-            },
             netease = nativeNetease?.let { gateway -> { song, ms, owner ->
                 gateway.recordPlay(song.id, ms, owner.neteaseRevision)
-                if (ms == null) libraryRepository.invalidate()
             } },
             navidrome = { song, ms, owner ->
                 val key = song.id to owner
@@ -394,34 +336,19 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             },
             onFailure = { platform, kind -> logger.warn("Player", "$platform listening report failed: $kind") })
     }
-    val profileRepository = io.github.currencortex.music.data.profile.ProfileRepository(apiClient,
-        AvatarImageCache(context, storageSuffix)) { RequestSession(accountRepository.server, accountRepository.token) }
     val bindingRepository: io.github.currencortex.music.data.binding.BindingRepository = io.github.currencortex.music.data.binding.BindingRepository(apiClient,
-        { musicSession() }) { libraryRepository.invalidate(); neteaseLibrary.invalidate() }
-    private val neteaseAvatarImporter by lazy {
-        val image = io.github.currencortex.music.data.profile.RemoteAvatarImage()
-        io.github.currencortex.music.data.profile.NeteaseAvatarImporter(accountRepository, authRepository,
-            profileRepository, bindingRepository, { musicSession() }, image::download)
-    }
-    fun importNeteaseAvatarAfterLogin(expected: RequestSession) {
-        appScope.launch {
-            when (val result = appResult { neteaseAvatarImporter.importAfterLogin(expected) }) {
-                is AppResult.Success -> Unit
-                is AppResult.Failure -> logger.warn("Profile", "NetEase avatar import failed: ${result.kind}")
-            }
-        }
-    }
+        { musicSession() }) { neteaseLibrary.invalidate() }
     val neteaseLibrary = io.github.currencortex.music.data.library.NeteaseLibraryRepository(apiClient, bindingRepository,
         neteaseSongActions) { musicSession() }
-    val primaryLibrary = io.github.currencortex.music.data.library.PrimaryMusicLibrary(libraryRepository,
+    val primaryLibrary = io.github.currencortex.music.data.library.PrimaryMusicLibrary(
         neteaseLibrary, bindingRepository, musicSettings, appScope)
     val database = Room.databaseBuilder(context.applicationContext, MusicDatabase::class.java, "music$storageSuffix.db")
         .addMigrations(MusicDatabase.MIGRATION_1_2).build()
     private val nativeLyricsProvider = io.github.currencortex.music.feature.lyrics.data.CurrentMusicLyricsProvider(
-        musicRepository, database.music(), server = { accountRepository.server }) { logger.debug("Lyrics", it) }
+        musicRepository, database.music(), server = { musicSettings.state.value.server }) { logger.debug("Lyrics", it) }
     private val projectLyricsProvider = io.github.currencortex.music.feature.lyrics.data.CurrentMusicLyricsProvider(
         musicRepository, database.music(), io.github.currencortex.music.data.settings.LyricsSource.CURRENT_MUSIC,
-        { accountRepository.server }) { logger.debug("Lyrics", it) }
+        { musicSettings.state.value.server }) { logger.debug("Lyrics", it) }
     val songLyrics = io.github.currencortex.music.feature.lyrics.data.SongLyricsStore(
         java.io.File(context.filesDir, "song-lyrics$storageSuffix"))
     private val qqLyricsMatching = io.github.currencortex.music.feature.lyrics.data.QqLyricsMatchSource(
@@ -465,7 +392,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             {
                 val source = musicSettings.state.value.lyricsSource
                 io.github.currencortex.music.feature.lyrics.data.LyricsSelection(
-                    listOf(source, accountRepository.server, accountRepository.sessionRevision.value,
+                    listOf(source, musicSettings.state.value.server,
                         neteaseSessions.state.value.revision, navidrome.state.value.revision),
                     when (source) {
                         io.github.currencortex.music.data.settings.LyricsSource.LOCAL ->
@@ -497,8 +424,8 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             io.github.currencortex.music.data.roaming.PersonalRoamingRepository(neteaseTransport)),
         io.github.currencortex.music.feature.roaming.NeteaseRoamingSessionStore(neteaseSessions), playerController,
         io.github.currencortex.music.data.roaming.RoamingPreferences(settingsStore), playerScope,
-        audioSettings.state.map { audioSettings.access().identity }.distinctUntilChanged()
-            .stateIn(playerScope, SharingStarted.Eagerly, audioSettings.access().identity))
+        neteaseSessions.state.map { "netease:" + it.revision }.distinctUntilChanged()
+            .stateIn(playerScope, SharingStarted.Eagerly, "netease:" + neteaseSessions.state.value.revision))
     val qqMusicPersonalRoaming = io.github.currencortex.music.feature.roaming.PersonalRoamingController(
         io.github.currencortex.music.data.roaming.QqMusicRoamingRepository(qqMusic),
         io.github.currencortex.music.feature.roaming.QqMusicRoamingSessionStore(qqMusic.state), playerController,
@@ -595,23 +522,19 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
     val playbackLyrics = io.github.currencortex.music.feature.lyrics.data.PlaybackLyrics(
         io.github.currencortex.music.feature.lyrics.data.managedLyricsRequests(
         kotlinx.coroutines.flow.combine(playbackQueue.state.map { it.current }.distinctUntilChanged(),
-            accountRepository.sessionRevision, neteaseSessions.state.map { it.revision }.distinctUntilChanged(),
+            neteaseSessions.state.map { it.revision }.distinctUntilChanged(),
             navidrome.state.map { it.revision }.distinctUntilChanged(),
-            musicSettings.state.map { it.server to it.lyricsSource }.distinctUntilChanged()) { song, account, netease, navidrome, lyricsSettings ->
-            io.github.currencortex.music.feature.lyrics.data.LyricsRequest(song, listOf(account, netease, navidrome, lyricsSettings))
+            musicSettings.state.map { it.server to it.lyricsSource }.distinctUntilChanged()) { song, netease, navidrome, lyricsSettings ->
+            io.github.currencortex.music.feature.lyrics.data.LyricsRequest(song, listOf(netease, navidrome, lyricsSettings))
         }, songLyrics.state), lyricsRepository::load, playerScope, songLyrics.state)
     val sleepTimer = io.github.currencortex.music.core.media.SleepTimer(playerController, playerScope)
-    val roomRepository = io.github.currencortex.music.data.room.RoomRepository(apiClient) { RequestSession(accountRepository.server, accountRepository.token) }
-    val roomSession = io.github.currencortex.music.core.room.RoomSession(roomRepository,
-        io.github.currencortex.music.core.room.RoomSseClient(routeServer = serverRouter::resolve), externalPlayer ?: playerController, playerScope,
-        { accountRepository.state.value.account?.id ?: 0 }, accountRepository::expired)
     internal val listenTogetherHistory = io.github.currencortex.music.data.netease.listen.NeteaseListenTogetherHistoryRepository(neteaseTransport)
     internal val listenTogetherFate = io.github.currencortex.music.data.netease.listen.NeteaseListenTogetherFateRepository(neteaseTransport)
     val listenTogether = io.github.currencortex.music.core.netease.listen.NeteaseListenTogetherSession(
         io.github.currencortex.music.data.netease.listen.NeteaseListenTogetherRepository(neteaseTransport,
             trace = { if (BuildConfig.DEBUG) android.util.Log.d("ListenTogetherSync", it) }),
         externalPlayer ?: playerController, playerScope, musicRepository::detail,
-        { song -> musicRepository.source(song, AudioQuality.from(musicSettings.state.value.quality.value), audioSession()).url },
+        { song -> musicRepository.source(song, AudioQuality.from(musicSettings.state.value.quality.value), musicSession()).url },
         details = musicRepository::details,
         trace = { if (BuildConfig.DEBUG) android.util.Log.d("ListenTogetherSync", it) })
     val ready = CompletableDeferred<Unit>()
@@ -627,7 +550,7 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 val localQueue = playbackQueue.state.value
                 listenTogether.restoreAutomatically {
                     playerController.commandRevision == commands && playbackQueue.state.value == localQueue &&
-                        !playerController.state.value.showPause && roomSession.state.value.detail == null
+                        !playerController.state.value.showPause
                 }
             }
         }
@@ -651,27 +574,6 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 }
             }
         }
-        playerScope.launch {
-            var previous = emby.state.value.revision
-            emby.state.collect { account ->
-                if (previous != account.revision) {
-                    audioSources.invalidate()
-                    if (playbackQueue.state.value.current?.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY) playerController.pause()
-                    previous = account.revision
-                }
-            }
-        }
-        if (nativeNetease != null) appScope.launch {
-            sessionRestored.await()
-            neteaseSessions.ready.await()
-            combine(accountRepository.state, accountRepository.sessionRevision, musicSettings.state, neteaseSessions.state) {
-                account, _, _, local ->
-                if (account.account != null && !accountRepository.token.isNullOrBlank() && local.loggedIn && !local.stale)
-                    musicSession() else null
-            }.distinctUntilChanged().collectLatest { owner ->
-                if (owner != null) bindingRepository.autoSyncProjectBinding(owner)
-            }
-        }
         if (nativeNetease != null) appScope.launch {
             neteaseSessions.ready.await()
             neteaseSessions.state.collect {
@@ -679,13 +581,13 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 // Cloud binding reads can fail offline; a background refresh must not
                 // terminate the app or prevent the other libraries from being invalidated.
                 appResult { bindingRepository.status() }
-                libraryRepository.clearSession(); neteaseLibrary.invalidate(); neteaseSongActions.clearSession()
+                neteaseLibrary.invalidate(); neteaseSongActions.clearSession()
             }
         }
         playerScope.launch {
-            accountRepository.sessionRevision.collect {
+            neteaseSessions.state.map { it.revision }.distinctUntilChanged().collect {
                 qqMusic.selectOwner()
-                audioSources.invalidate(); roomSession.disconnect(); listenTogether.disconnect()
+                audioSources.invalidate(); listenTogether.disconnect()
                 bindingRepository.clearSession(); neteaseLibrary.invalidate(); neteaseSongActions.clearSession()
             }
         }
@@ -702,16 +604,16 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 }
             }
         }
-        appScope.launch { audioSettings.state.collect { audioSources.invalidate() } }
         playerScope.launch {
             sessionRestored.await()
-            accountRepository.sessionRevision.collect {
-                val track = playbackQueue.state.value.current
-                if (audioSettings.hasDetachedServerSource() &&
-                    track?.let { it.musicSource == MusicSource.NETEASE && !it.neteaseCloud && !it.video } == true) {
-                    appResult { playerController.discardLoadedLocalAudio() }
+            var revision = kugou.state.value.revision
+            kugou.state.collect {
+                if (it.revision != revision) {
+                    revision = it.revision
+                    audioSources.invalidate()
+                    if (playbackQueue.state.value.current?.musicSource == io.github.currencortex.music.data.song.MusicSource.KUGOU)
+                        playerController.pause()
                 }
-                appResult { audioSettings.refreshServerSourceOwner() }
             }
         }
         appScope.launch {
@@ -727,21 +629,10 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             }
         }
         appScope.launch {
-            kotlinx.coroutines.flow.combine(accountRepository.state, musicSettings.state) { account, preferences ->
-                account.account?.id to preferences.server
-            }.distinctUntilChanged().collect {
-                qqMusic.selectOwner()
-                libraryRepository.clearSession(); bindingRepository.clearSession()
-            }
-        }
-        appScope.launch {
             try {
                 val initial = musicSettings.snapshot()
-                audioSettings.ready.await()
                 navidrome.ready.await()
-                emby.ready.await()
                 if (nativeNetease != null) neteaseSessions.ready.await()
-                accountRepository.server = initial.server
                 serverRouter.configure(initial.serverMode, initial.server)
                 appScope.launch {
                     musicSettings.serverSelection.collectLatest { (mode, server) ->
@@ -752,18 +643,16 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 if (initial.restoreQueue) database.music().queue()?.let {
                     playbackQueue.restore(ApiJson.decodeFromString<QueueSnapshot>(it.payload))
                 }
+                runCatching {
+                    kugouVault.read()?.takeIf(String::isNotBlank)?.let { raw ->
+                        io.github.currencortex.music.core.network.ApiJson
+                            .decodeFromString(io.github.currencortex.music.data.kugou.KugouAccountState.serializer(), raw)
+                    }?.let { saved -> kugou.restore(saved) }
+                }
                 ready.complete(Unit)
-                if (nativeNetease != null) {
-                    // Restore cached CurrentMusic identity locally. Its slow validation must
-                    // not block the independent NetEase library or launch animation.
-                    accountRepository.restoreToken()
-                    sessionRestored.complete(Unit)
-                    appScope.launch { authRepository.validateRestored() }
-                } else authRepository.restore(initial.server)
+                sessionRestored.complete(Unit)
             } catch (_: Exception) {
                 ready.complete(Unit)
-                accountRepository.state.value = AccountState(error = "CurrentMusic 本地会话恢复失败，请重新登录")
-            } finally {
                 sessionRestored.complete(Unit)
             }
         }
@@ -790,7 +679,6 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
     )
     override fun close() {
         todayListening.close()
-        lxSources.close()
         originalAiMasterEffects.close()
         originalSpeakerEffects.close()
         originalMoodEffects.close()
@@ -798,7 +686,6 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         originalSoundEffects.close()
         smartTuning.close()
         equalizer.close()
-        roomSession.disconnect()
         listenTogether.disconnect()
         appScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         playerScope.coroutineContext[kotlinx.coroutines.Job]?.cancel()

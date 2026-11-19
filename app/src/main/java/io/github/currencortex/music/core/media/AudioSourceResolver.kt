@@ -2,7 +2,6 @@ package io.github.currencortex.music.core.media
 
 import io.github.currencortex.music.core.network.*
 import io.github.currencortex.music.data.song.AudioSource
-import io.github.currencortex.music.data.song.SERVER_AUDIO_SOURCE_IDENTITY_PREFIX
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -13,8 +12,7 @@ data class AudioRequest(val songId: Long, val quality: AudioQuality, val account
     val refresh: Boolean = false, val supportsDolby: Boolean = false) {
     val key get() = AudioCache.key(session.server, accountId, songId, quality, providerIdentity, supportsDolby)
 
-    private val dolbyAuto get() = quality == AudioQuality.AUTO &&
-        (providerIdentity == "netease" || providerIdentity.startsWith(SERVER_AUDIO_SOURCE_IDENTITY_PREFIX))
+    private val dolbyAuto get() = quality == AudioQuality.AUTO && providerIdentity == "netease"
 
     internal fun accepts(source: AudioSource): Boolean = !dolbyAuto || supportsDolby || source.level != AudioQuality.DOLBY.value
 
@@ -152,6 +150,6 @@ class AudioSourceResolver(private val cache: AudioCache, private val currentSess
     }
 }
 
-/** Resolved candidates never share byte ranges with a different recording or plugin URL. */
+/** Resolved candidates never share byte ranges with a different recording. */
 internal fun sourceCacheKey(requestKey: String, source: AudioSource): String =
-    if (source.matched || source.source.startsWith("lx:")) "$requestKey:match:${source.cacheIdentity}" else requestKey
+    if (source.matched) "$requestKey:match:${source.cacheIdentity}" else requestKey

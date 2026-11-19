@@ -251,8 +251,8 @@ class NeteaseLibraryRepository(private val api: ApiClient, private val binding: 
     }
 }
 
-/** Bound accounts can use the live NetEase library without importing CurrentMusic snapshots. */
-class PrimaryMusicLibrary(private val current: LibraryRepository, private val netease: NeteaseLibraryRepository,
+/** A logged-in NetEase account owns the live library; there is no server snapshot layer. */
+class PrimaryMusicLibrary(private val netease: NeteaseLibraryRepository,
     private val binding: BindingRepository, private val settings: MusicSettingsRepository, scope: CoroutineScope) {
     val identity = combine(binding.state, settings.state.map { it.neteaseMainLibrary }.distinctUntilChanged()) { bound, preferred ->
         Triple(preferred && bound?.bound == true, bound?.profile?.uid ?: 0, bound?.stale == true)
@@ -262,25 +262,9 @@ class PrimaryMusicLibrary(private val current: LibraryRepository, private val ne
     val likesUseNetease = binding.state.map { it?.let { value -> value.bound && !value.stale } == true }
         .stateIn(scope, SharingStarted.Eagerly, false)
     suspend fun resolveLikeNetease(): Boolean = binding.cachedStatus().let { it.bound && !it.stale }
-    suspend fun playlists(fresh: Boolean = false): List<Playlist> = coroutineScope {
-        if (fresh) current.clearReads()
-        // Imported NetEase playlists are snapshots with CurrentMusic IDs. Once the live
-        // library succeeds it owns membership; stale snapshots must not resurrect removals.
-        // Keep CurrentMusic playlists even when their numeric IDs match native playlists.
-        val cloud = async { appResult { if (current.hasCurrentMusicAccount) current.playlists() else emptyList() } }
-        val native = appResult { if (resolveNetease()) netease.playlists(fresh) else null }
-        val saved = cloud.await()
-        if (saved is AppResult.Failure && native is AppResult.Failure) throw ApiException(saved.kind, saved.status)
-        val live = (native as? AppResult.Success)?.value
-        val snapshots = (saved as? AppResult.Success)?.value.orEmpty().filterNot {
-            live != null && it.source in setOf("ncm", "netease")
-        }
-        val combined = snapshots + live.orEmpty()
-        if (combined.isEmpty() && live == null) {
-            if (saved is AppResult.Failure) throw ApiException(saved.kind, saved.status)
-            if (native is AppResult.Failure) throw ApiException(native.kind, native.status)
-        }
-        combined.distinctBy { it.source to it.id }
+    suspend fun playlists(fresh: Boolean = false): List<Playlist> {
+        if (!resolveNetease()) return emptyList()
+        return netease.playlists(fresh)
     }
     suspend fun likedPlaylist(fresh: Boolean = false): Playlist? = if (resolveLikeNetease()) netease.likedPlaylist(fresh) else null
 }

@@ -19,15 +19,12 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import io.github.currencortex.music.data.auth.Account
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.coroutineContext
 
-/** Account storage is restored before the name reveal; never consult a separate online service. */
-internal fun launchUsername(account: Account?): String =
-    account?.username?.trim()?.takeIf(String::isNotEmpty)
-        ?: account?.nickname?.trim()?.takeIf(String::isNotEmpty) ?: "欢迎聆听"
+/** The launch name reveal; without an account system it always welcomes the listener. */
+internal fun launchUsername(): String = "欢迎聆听"
 
 /** Consume input while disk settings select the actual animation, before either timeline mounts. */
 @Composable internal fun LaunchPreparationOverlay(dark: Boolean = false) {

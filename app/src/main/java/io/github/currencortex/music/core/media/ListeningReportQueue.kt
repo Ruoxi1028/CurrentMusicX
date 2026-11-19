@@ -6,11 +6,14 @@ import io.github.currencortex.music.data.song.Song
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 
-/** Application-owned workers drain final service reports and isolate each platform's failures. */
+/**
+ * Application-owned workers drain final service reports and isolate each platform's
+ * failures. Only NetEase (scrobble) and Navidrome (scrobble) accept reports; the app
+ * has no server-side listening statistics of its own.
+ */
 class ListeningReportQueue(
     private val scope: CoroutineScope,
     private val currentSession: (Song) -> RequestSession,
-    currentMusic: suspend (Song, Long?, RequestSession) -> Unit,
     netease: (suspend (Song, Long?, RequestSession) -> Unit)? = null,
     navidrome: suspend (Song, Long?, RequestSession) -> Unit,
     private val onFailure: (String, ErrorKind) -> Unit = { _, _ -> },
@@ -28,23 +31,17 @@ class ListeningReportQueue(
         }
         return channel
     }
-    private val current = worker("CurrentMusic", { report ->
-        val owner = currentSession(report.song)
-        report.owner.token != null && report.owner.server == owner.server && report.owner.token == owner.token
-    }, currentMusic)
     private val native = netease?.let { send -> worker("Netease", { report ->
         report.owner.neteaseRevision != null && report.owner.neteaseRevision == currentSession(report.song).neteaseRevision
     }, send) }
     private val privateLibrary = worker("Navidrome", { it.owner == currentSession(it.song) }, navidrome)
 
     fun report(song: Song, owner: RequestSession, milliseconds: Long? = null) {
-        if (song.video || song.musicSource == MusicSource.LOCAL || song.musicSource == MusicSource.EMBY ||
-            song.musicSource == MusicSource.QQ_MUSIC || milliseconds != null && milliseconds <= 0) return
+        if (song.video || song.musicSource == MusicSource.LOCAL ||
+            song.musicSource == MusicSource.QQ_MUSIC || song.musicSource == MusicSource.KUGOU ||
+            milliseconds != null && milliseconds <= 0) return
         val report = Report(song, milliseconds, owner)
         if (song.musicSource == MusicSource.NAVIDROME) privateLibrary.trySend(report)
-        else {
-            current.trySend(report)
-            if (song.musicSource == MusicSource.NETEASE) native?.trySend(report)
-        }
+        else if (song.musicSource == MusicSource.NETEASE) native?.trySend(report)
     }
 }

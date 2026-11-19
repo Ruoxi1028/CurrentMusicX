@@ -33,14 +33,8 @@ class UpdateSourceProbe(
 ) : UpdateSourceCheck {
     private val http = client.newBuilder().followRedirects(false).followSslRedirects(false)
         .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS)
-        .callTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
-    private val privateMirrorHttp = http.newBuilder().retryOnConnectionFailure(true)
-        .dns(object : okhttp3.Dns {
-            override fun lookup(hostname: String) = http.dns.lookup(hostname).let { addresses ->
-                if (hostname == "music.20110208.xyz") addresses.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
-                else addresses
-            }
-        }).build()
+        .callTimeout(8, TimeUnit.SECONDS).retryOnConnectionFailure(false)
+        .dns(io.github.currencortex.music.core.network.PublicOnlyDns).build()
 
     @OptIn(InternalCoroutinesApi::class)
     override suspend fun check(release: AppRelease, source: UpdateSource): UpdateSourceHealth = withContext(Dispatchers.IO) {
@@ -53,7 +47,7 @@ class UpdateSourceProbe(
                 check(url.scheme == "https" && url.username.isEmpty() && url.password.isEmpty()) { "下载源必须使用 HTTPS" }
                 val remaining = TimeUnit.SECONDS.toNanos(8) - (nanoTime() - started)
                 if (remaining <= 0) return@withContext result(UpdateSourceStatus.TIMEOUT, "检测超时")
-                val call = (if (source == UpdateSource.CURRENTMUSIC) privateMirrorHttp else http)
+                val call = http
                     .newCall(Request.Builder().url(url).header("Range", "bytes=0-3")
                     .header("Accept-Encoding", "identity")
                     .header("Accept", "application/vnd.android.package-archive, application/octet-stream")

@@ -107,7 +107,6 @@ private fun qqPlaylistSubtitle(playlist: Playlist): String = when {
     }
     val repository = container.qqMusic
     val account by repository.state.collectAsStateWithLifecycle()
-    val sessionRevision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
     val settings by container.musicSettings.state.collectAsStateWithLifecycle()
     val liked by repository.likedState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -117,7 +116,7 @@ private fun qqPlaylistSubtitle(playlist: Playlist): String = when {
     var loading by remember(route) { mutableStateOf(true) }
     var busy by remember(route) { mutableStateOf(false) }
     var error by remember(route) { mutableStateOf<String?>(null) }
-    var notice by remember(route, sessionRevision, account.revision) { mutableStateOf<String?>(null) }
+    var notice by remember(route, account.revision) { mutableStateOf<String?>(null) }
     var page by remember(route) { mutableStateOf(QqPage()) }
     val initialQuery = if (route.startsWith("qq/search/")) routeId(route) else ""
     val initialType = if (route.startsWith("qq/search/")) route.removePrefix("qq/search/").substringBefore('/')
@@ -128,10 +127,10 @@ private fun qqPlaylistSubtitle(playlist: Playlist): String = when {
     var offset by rememberSaveable(route) { mutableIntStateOf(0) }
     var radioPage by rememberSaveable(route) { mutableIntStateOf(1) }
     var loadedIdentity by remember(route) { mutableStateOf<String?>(null) }
-    var destinations by remember(route, sessionRevision, account.revision) { mutableStateOf<Pair<Song, List<Playlist>>?>(null) }
-    var editName by remember(route, sessionRevision, account.revision) { mutableStateOf<String?>(null) }
-    var confirmDelete by remember(route, sessionRevision, account.revision) { mutableStateOf(false) }
-    var managePlaylistSubscription by remember(route, sessionRevision, account.revision) { mutableStateOf(false) }
+    var destinations by remember(route, account.revision) { mutableStateOf<Pair<Song, List<Playlist>>?>(null) }
+    var editName by remember(route, account.revision) { mutableStateOf<String?>(null) }
+    var confirmDelete by remember(route, account.revision) { mutableStateOf(false) }
+    var managePlaylistSubscription by remember(route, account.revision) { mutableStateOf(false) }
     val isSearch = route == "qq/search" || route.startsWith("qq/search/")
     val root = route in setOf("home", "discover", "me")
     val bottom = LocalMusicBottomInset.current
@@ -147,10 +146,10 @@ private fun qqPlaylistSubtitle(playlist: Playlist): String = when {
             } finally { busy = false }
         }
     }
-    LaunchedEffect(route, account.revision, sessionRevision, settings.server, refresh, submitted, searchType, offset, radioPage) {
+    LaunchedEffect(route, account.revision, settings.server, refresh, submitted, searchType, offset, radioPage) {
         loading = true
         error = null
-        val identity = "$sessionRevision|${account.revision}|${settings.server}"
+        val identity = "${account.revision}|${settings.server}"
         if (loadedIdentity != identity) {
             loadedIdentity = identity
             page = QqPage()
@@ -336,12 +335,7 @@ private fun qqPlaylistSubtitle(playlist: Playlist): String = when {
                     SettingsPreference("我喜欢", onClick = { navigate("qq/likes") })
                     SettingsDivider()
                     SettingsPreference("收藏的专辑", onClick = { navigate("qq/albums") })
-                    SettingsDivider()
-                    SettingsPreference("CurrentMusic 个人主页", "个人资料、动态与社区账号", onClick = { navigate("qq/community-profile") })
                 }
-            }
-            if (route == "discover") item {
-                MusicTextAction("CurrentMusic 社区 ›", { navigate("qq/community") })
             }
             if ((route == "me" || route == "qq/playlists") && account.loggedIn) item {
                 MusicTextAction("新建歌单", { editName = "" }, enabled = !busy)

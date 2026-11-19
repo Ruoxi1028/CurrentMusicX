@@ -27,15 +27,8 @@ class UpdateDownloader(client: OkHttpClient, private val directory: File,
 ) : UpdateDownload {
     private val http = client.newBuilder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS).build()
-    // Permit alternate DNS routes when the dedicated mirror's first TLS connection fails.
-    private val privateMirrorHttp = http.newBuilder().retryOnConnectionFailure(true)
-        .dns(object : okhttp3.Dns {
-            override fun lookup(hostname: String) = http.dns.lookup(hostname).let { addresses ->
-                if (hostname == "music.20110208.xyz") addresses.sortedBy { if (it is java.net.Inet4Address) 0 else 1 }
-                else addresses
-            }
-        }).build()
+        .readTimeout(15, TimeUnit.SECONDS).callTimeout(0, TimeUnit.SECONDS)
+        .dns(io.github.currencortex.music.core.network.PublicOnlyDns).build()
 
     @OptIn(InternalCoroutinesApi::class)
     override suspend fun download(release: AppRelease, source: UpdateSource, onProgress: (Long, Long) -> Unit): File = withContext(Dispatchers.IO) {
@@ -61,7 +54,7 @@ class UpdateDownloader(client: OkHttpClient, private val directory: File,
                     val request = Request.Builder().url(url)
                         .header("Accept", "application/vnd.android.package-archive, application/octet-stream")
                         .header("User-Agent", "CurrentMusic updater")
-                    val call = (if (source == UpdateSource.CURRENTMUSIC) privateMirrorHttp else http).newCall(request.build())
+                    val call = http.newCall(request.build())
                     val cancel = currentCoroutineContext().job.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { if (it != null) call.cancel() }
                     try {
                         call.execute().use { response ->
@@ -89,9 +82,8 @@ class UpdateDownloader(client: OkHttpClient, private val directory: File,
                                         remoteCheck(received <= release.size, "安装包超过预期大小")
                                         output.write(buffer, 0, count)
                                         onProgress(received, release.size)
-                                        // The dedicated service is verified independently and can be slow on
-                                        // mobile networks. Keep its progress; readTimeout still detects stalls.
-                                        if (source != UpdateSource.GITHUB && source != UpdateSource.CURRENTMUSIC && received < release.size) {
+                                        // Mirrors must stay responsive; the origin is allowed to be slow.
+                                        if (source != UpdateSource.GITHUB && received < release.size) {
                                             val now = nanoTime()
                                             val elapsed = now - checkpoint
                                             if (elapsed >= TimeUnit.SECONDS.toNanos(16)) {

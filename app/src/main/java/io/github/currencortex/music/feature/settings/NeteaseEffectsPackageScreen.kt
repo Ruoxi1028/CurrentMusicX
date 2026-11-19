@@ -82,9 +82,7 @@ internal fun NeteaseEffectsPackageScreen(vm: SoundEffectsViewModel, onBack: () -
                 }
                 if (!installed && supported) item {
                     SettingsGroup {
-                        SettingsPreference("下载源", if (source == UpdateSource.CURRENTMUSIC)
-                            "跟随「检查更新」 · 专用镜像不提供音效包，优先尝试 GitHub"
-                        else "跟随「检查更新」 · ${source.label}")
+                        SettingsPreference("下载源", "跟随「检查更新」 · ${source.label}")
                     }
                 }
                 if (!engineReady && supported) item {

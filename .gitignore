@@ -38,6 +38,7 @@ keystore.properties
 !/PRIVACY.md
 !/THIRD_PARTY_NOTICES.md
 !/NETEASE_USB_OUTPUT.md
+!/CHANGES.md
 !/app/src/main/assets/legal/NOTICES.md
 !/app/src/main/assets/legal/PRIVACY.md
 !/app/src/main/cpp/oboe/UPSTREAM.md

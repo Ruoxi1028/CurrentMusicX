@@ -20,8 +20,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
-fun SupportScreen(onBack: () -> Unit, afdianUrl: String = SupportConfig.afdianUrl,
-    onOfficialDonation: () -> Unit = {}) {
+fun SupportScreen(onBack: () -> Unit, afdianUrl: String = SupportConfig.afdianUrl) {
     val context = LocalContext.current
     val appIcon = remember(context) {
         context.packageManager.getApplicationIcon(context.applicationInfo).toBitmap(192, 192).asImageBitmap()
@@ -37,13 +36,6 @@ fun SupportScreen(onBack: () -> Unit, afdianUrl: String = SupportConfig.afdianUr
                         fontSize = 15.sp, lineHeight = 23.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     Text("开发者 · bileizhen", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 }
-            }
-        }
-        item("official") {
-            SettingsSection("官方捐赠", MusicIcons.Heart) {
-                SettingsPreference("支持 CurrentMusic 官方", "登录后扫码捐赠、登记交易单号并查看本人记录",
-                    Modifier.testTag("support_official_donation"), onClick = onOfficialDonation,
-                    trailing = { Icon(MusicIcons.Forward, null, Modifier.size(16.dp)) })
             }
         }
         item("afdian") {
@@ -63,7 +55,7 @@ fun SupportScreen(onBack: () -> Unit, afdianUrl: String = SupportConfig.afdianUr
         }
         item("privacy") {
             SettingsHint("所有赞助均为自愿行为，不影响 CurrentMusic 的正常使用。赞助不会解锁额外的软件功能或会员权益。")
-            SettingsHint("爱发电无需登录。官方捐赠登记需要登录，提交的金额、交易单号和账号信息仅供站长核对。支付由对应平台处理，应用不会自动读取支付记录或判断支付是否完成。")
+            SettingsHint("爱发电无需登录。")
         }
     }
 }

@@ -1,23 +1,23 @@
 package io.github.currencortex.music.feature.player
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import io.github.currencortex.music.AppContainer
-import io.github.currencortex.music.data.profile.ProfileUser
-import io.github.currencortex.music.data.profile.listeningDuration
-import io.github.currencortex.music.feature.profile.UserAvatar
-import io.github.currencortex.music.feature.profile.UserRoleBadge
-import io.github.currencortex.music.feature.profile.UserTitleBadge
+import io.github.currencortex.music.core.media.listeningDuration
 import io.github.currencortex.music.feature.roaming.PersonalRoamingPage
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.Card
@@ -26,13 +26,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable internal fun PlayerListeningPage(container: AppContainer, onPlay: () -> Unit,
     onBinding: () -> Unit, onDialogActive: (Boolean) -> Unit, onListening: () -> Unit = {}) {
-    val account by container.accountRepository.state.collectAsStateWithLifecycle()
     val netease by container.neteaseSessions.state.collectAsStateWithLifecycle()
     val today by container.todayListening.today.collectAsStateWithLifecycle()
-    val user = account.account?.let { ProfileUser(id = it.id, username = it.username, nickname = it.nickname,
-        avatar = it.avatar, isAdmin = it.isAdmin, isSuper = it.isSuper, title = it.title) }
-        ?: netease.profile?.takeIf { netease.loggedIn }?.let { ProfileUser(nickname = it.nickname, avatar = it.avatar) }
-        ?: ProfileUser(nickname = "未登录")
+    val nickname = netease.profile?.nickname.orEmpty().ifBlank { if (netease.loggedIn) "网易云用户" else "未登录" }
+    val avatar = netease.profile?.avatar.orEmpty()
     LaunchedEffect(container) {
         while (true) { container.todayListening.refresh(); delay(15_000) }
     }
@@ -46,12 +43,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
             Card {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        UserAvatar(user, container, size = 48.dp, reserveOverlay = false)
+                        if (avatar.isNotBlank()) AsyncImage(avatar, nickname, Modifier.size(48.dp).clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        else Box(Modifier.size(48.dp).clip(CircleShape).background(colors.primary.copy(alpha = .08f)))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(user.nickname.ifBlank { user.username }, Modifier.testTag("player_side_username"),
+                            Text(nickname, Modifier.testTag("player_side_username"),
                                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            UserRoleBadge(user.role)
-                            UserTitleBadge(user.title)
                         }
                     }
                     Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onListening).testTag("player_open_listening"), horizontalArrangement = Arrangement.SpaceBetween,

@@ -48,14 +48,6 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
     val currentSong = queue.map { it.current }.distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), queue.value.current)
     val settings = container.musicSettings.state
-    val ai = PlayerAiController(io.github.currencortex.music.data.profile.PlayerAiRepository(session = { container.projectSession() },
-        routeServer = container.serverRouter::resolve), viewModelScope) { container.projectSession() }
-    fun openAi() { queue.value.current?.let(ai::open) }
-    fun playAiCard(card: io.github.currencortex.music.data.profile.PostAttachment) {
-        val song = Song(card.id, card.name, card.sub, cover = card.pic)
-        if (player.external != null) player.external?.request(song) else player.playList(listOf(song), 0)
-    }
-    val libraryStatuses = container.libraryRepository.statuses
     val usesNeteaseLibrary = container.primaryLibrary.likesUseNetease
     val lyrics = container.playbackLyrics.state
     private val _actions = MutableStateFlow(PlayerSongActions())
@@ -76,7 +68,6 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
     private var actionsOwner: List<Any?>? = null
     private fun likeOwner(): List<Any?> = listOf(queue.value.current?.id, queue.value.current?.musicSource,
         queue.value.current?.privateIdentity, container.musicSession(),
-        container.emby.state.value.revision.takeIf { queue.value.current?.emby != null },
         usesNeteaseLibrary.value, container.primaryLibrary.identity.value.second,
         container.qqMusic.audioIdentity.takeIf { queue.value.current?.musicSource == MusicSource.QQ_MUSIC })
     private var actionEpoch = 0L
@@ -91,15 +82,12 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
     private val songComments = SongCommentsRepository(container.apiClient) { container.musicSession() }
     private val commentOperations = mutableListOf<Job>()
     init {
-        viewModelScope.launch { container.accountRepository.sessionRevision.drop(1).collect { ai.close() } }
-        viewModelScope.launch { settings.map { it.server }.distinctUntilChanged().drop(1).collect { ai.close() } }
         viewModelScope.launch {
             combine(queue.map { if (it.current?.privateLibrary == true || it.current?.musicSource == MusicSource.QQ_MUSIC) it.current?.id else NeteaseSongActionsRepository.songId(it.current) }.distinctUntilChanged(),
-                container.accountRepository.sessionRevision, container.musicSettings.state.map { it.server }.distinctUntilChanged(),
-                netease.revision, container.libraryRepository.revision, container.primaryLibrary.identity,
+                container.musicSettings.state.map { it.server }.distinctUntilChanged(),
+                netease.revision, container.primaryLibrary.identity,
                 container.navidrome.likes.map { if (queue.value.current?.musicSource == MusicSource.NAVIDROME) it else emptyMap() }.distinctUntilChanged(),
                 container.navidrome.state.map { if (queue.value.current?.musicSource == MusicSource.NAVIDROME) it.revision else "" }.distinctUntilChanged(),
-                container.emby.likes, container.emby.state.map { it.revision }.distinctUntilChanged(),
                 container.neteaseSessions.state.map { it.revision }.distinctUntilChanged(),
                 container.qqMusic.state, container.qqMusic.likedState) { values ->
                     values.first() as Long? to values.drop(1)
@@ -156,20 +144,11 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
                         error = (likedResult as? AppResult.Failure)?.message)
                     return@collectLatest
                 }
-                if (queue.value.current?.musicSource == MusicSource.EMBY) {
-                    val song = queue.value.current!!
-                    val result = if (id !in container.emby.likes.value) appResult { container.emby.detail(song) } else null
-                    if (nextOwner == likeOwner()) _actions.value = PlayerSongActions(songId = id,
-                        liked = container.emby.likes.value[id], error = (result as? AppResult.Failure)?.message)
-                    return@collectLatest
-                }
                 if (queue.value.current?.musicSource == MusicSource.NAVIDROME) {
                     _actions.value = PlayerSongActions(songId = id, liked = container.navidrome.likes.value[id] == true)
                     return@collectLatest
                 }
                 supervisorScope {
-                    if (container.accountRepository.token != null)
-                        launch { appResult { container.libraryRepository.refreshStatus(listOf(queue.value.current?.id ?: id)) } }
                     launch { val result = appResult { netease.likeCount(id) }; if (result is AppResult.Success) _actions.update { it.copy(likeCount = result.value) } }
                     launch { val result = appResult { netease.comments(id, limit = 1) }; if (result is AppResult.Success) _actions.update { it.copy(commentCount = result.value.total?.takeIf { n -> n >= 0 }) } }
                     launch { val result = appResult { netease.isLiked(id) }; if (result is AppResult.Success) _actions.update { it.copy(liked = result.value) } }
@@ -178,8 +157,8 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
         }
         viewModelScope.launch {
             combine(queue.map { Triple(it.mode, it.heartPlaylistId, if (it.songs.lastIndex - it.index <= 2) NeteaseSongActionsRepository.songId(it.current) else null) }.distinctUntilChanged(),
-                state.map { it.mode }.distinctUntilChanged(), container.accountRepository.sessionRevision,
-                settings.map { it.server }.distinctUntilChanged()) { context, playerMode, _, _ -> context to playerMode }
+                state.map { it.mode }.distinctUntilChanged(),
+                settings.map { it.server }.distinctUntilChanged()) { context, playerMode, _ -> context to playerMode }
                 .collectLatest { (context, playerMode) ->
                     val (mode, playlistId, id) = context
                     if (mode != PlaybackMode.HEART || playlistId <= 0 || id == null || playerMode != PlayerMode.LOCAL) return@collectLatest
@@ -208,11 +187,9 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
         val qqMusic = song.musicSource == MusicSource.QQ_MUSIC
         val actionId = if (song.privateLibrary || qqMusic) song.id else NeteaseSongActionsRepository.songId(song)
         if (qqMusic && _actions.value.takeIf { it.songId == actionId }?.liked == null) return
-        if (song.musicSource == MusicSource.EMBY && _actions.value.takeIf { it.songId == actionId }?.liked == null) return
         if (song.musicSource == MusicSource.NETEASE && _actions.value.takeIf { it.songId == actionId }?.liked == null) return
-        val before = if (song.privateLibrary || qqMusic || song.musicSource == MusicSource.NETEASE || usesNeteaseLibrary.value)
-            _actions.value.takeIf { it.songId == actionId }?.liked == true else libraryStatuses.value[song.id]?.liked == true
-        val write = LikeWrite(song, owner, if (song.emby != null) container.emby.session() else container.musicSession(), before, !before)
+        val before = _actions.value.takeIf { it.songId == actionId }?.liked == true
+        val write = LikeWrite(song, owner, container.musicSession(), before, !before)
         likeWrite = write
         _likePreview.value = PlayerLikePreview(song, write.desired)
         _actions.update { it.copy(liked = write.desired, liking = true, error = null) }
@@ -223,16 +200,15 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
                         val desired = write.desired
                         val revision = write.revision
                         val result = appResult {
-                            if (write.session != (if (song.emby != null) container.emby.session() else container.musicSession()))
+                            if (write.session != container.musicSession())
                                 throw ApiException(ErrorKind.Unauthorized)
-                            if (song.musicSource == MusicSource.EMBY) return@appResult container.emby.setLiked(song, desired)
                             if (song.musicSource == MusicSource.NAVIDROME) return@appResult container.navidrome.setLiked(song, desired)
                             if (qqMusic) {
                                 if (owner != likeOwner()) throw ApiException(ErrorKind.Unauthorized)
                                 container.qqMusic.setLiked(song, desired)
                                 return@appResult desired
                             }
-                            if (write.session != (if (song.emby != null) container.emby.session() else container.musicSession()))
+                            if (write.session != container.musicSession())
                                 throw ApiException(ErrorKind.Unauthorized)
                             if (song.musicSource == MusicSource.NETEASE) {
                                 if (owner != likeOwner()) throw ApiException(ErrorKind.Unauthorized)
@@ -240,10 +216,7 @@ class PlayerViewModel(internal val container: AppContainer) : ViewModel() {
                                 val uid = netease.boundUid(write.session)
                                 netease.setLiked(id, desired, write.session, song, expectedUid = uid)
                                 desired
-                            } else when (val saved = container.libraryRepository.setLiked(song, desired)) {
-                                is AppResult.Success -> container.libraryRepository.statuses.value[song.id]?.liked == true
-                                is AppResult.Failure -> throw ApiException(saved.kind)
-                            }
+                            } else throw ApiException(ErrorKind.NotFound, userMessage = "这首歌不在支持的平台，无法收藏")
                         }
                         if (result is AppResult.Success) write.confirmed = result.value
                         if (likeWrite !== write) break

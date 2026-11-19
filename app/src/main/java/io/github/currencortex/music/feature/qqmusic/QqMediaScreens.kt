@@ -25,10 +25,9 @@ import io.github.currencortex.music.ui.component.nativeui.*
 import top.yukonga.miuix.kmp.basic.Text
 
 @Composable internal fun QqCommentsScreen(container: AppContainer, mid: String, onBack: () -> Unit) {
-    val revision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
     val qqAccount by container.qqMusic.state.collectAsStateWithLifecycle()
     val settings by container.musicSettings.state.collectAsStateWithLifecycle()
-    val identity = "$revision|${qqAccount.revision}|${settings.server}"
+    val identity = "${qqAccount.revision}|${settings.server}"
     var comments by remember(mid, identity) { mutableStateOf<List<QqComment>>(emptyList()) }
     var page by remember(mid, identity) { mutableIntStateOf(0) }
     var seq by remember(mid, identity) { mutableStateOf("") }
@@ -73,10 +72,9 @@ import top.yukonga.miuix.kmp.basic.Text
 }
 
 @Composable internal fun QqMvScreen(container: AppContainer, id: String, onBack: () -> Unit) {
-    val revision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
     val qqAccount by container.qqMusic.state.collectAsStateWithLifecycle()
     val settings by container.musicSettings.state.collectAsStateWithLifecycle()
-    val identity = "$revision|${qqAccount.revision}|${settings.server}"
+    val identity = "${qqAccount.revision}|${settings.server}"
     var source by remember(id, identity) { mutableStateOf("") }
     var error by remember(id, identity) { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }

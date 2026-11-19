@@ -33,7 +33,6 @@ import io.github.currencortex.music.core.media.PlayerState
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
 import io.github.currencortex.music.data.library.Playlist
-import io.github.currencortex.music.data.profile.ProfileUser
 import io.github.currencortex.music.data.song.Song
 import io.github.currencortex.music.feature.home.DailyRecommendationHero
 import io.github.currencortex.music.feature.home.HomeLibraryShortcuts
@@ -88,29 +87,16 @@ fun QqMusicHomeScreen(
     onProfile: (String?, Rect?) -> Unit,
     navigate: (String) -> Unit,
     play: (List<Song>, Int) -> Unit,
-    profile: ProfileUser? = null,
     onSearchBounds: (Rect) -> Unit = {},
     hideSearch: Boolean = false,
     searchQuery: String = "",
     onSearchSubmit: () -> Unit = onSearch,
 ) {
     val container = libraryVm.container
-    val account by container.accountRepository.state.collectAsStateWithLifecycle()
     val preferences by container.musicSettings.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val qqAccount by container.qqMusic.state.collectAsStateWithLifecycle()
-    val sessionRevision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
-    val avatarVersions by container.profileRepository.avatarVersions.collectAsStateWithLifecycle()
-    val scales by container.profileRepository.scales.collectAsStateWithLifecycle()
-    val user = profile?.takeIf { it.id == account.account?.id }
-    val avatar = user?.avatar ?: account.account?.avatar.orEmpty()
-    val decoration = user?.decoration.orEmpty()
-    val decorationUrl = remember(preferences.server, decoration) {
-        container.profileRepository.decorationUrl(preferences.server, decoration)
-    }
-    val avatarUrl = remember(preferences.server, avatar, avatarVersions) {
-        container.profileRepository.avatarUrl(preferences.server, avatar, avatarVersions)
-    }
+    val avatar = qqAccount.avatar
     val bottom = LocalMusicBottomInset.current
     val playbackSummary = remember(container.playerController) {
         container.playerController.state.flowMap {
@@ -128,7 +114,7 @@ fun QqMusicHomeScreen(
     val playback by playbackSummary.collectAsStateWithLifecycle(initialValue = PlayerState())
     var refresh by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf(QqHomeState()) }
-    val identity = "${preferences.server}|$sessionRevision|${qqAccount.revision}|${qqAccount.loggedIn}"
+    val identity = "${preferences.server}|${qqAccount.revision}|${qqAccount.loggedIn}"
 
     LaunchedEffect(identity, refresh) {
         state = QqHomeState()
@@ -204,11 +190,9 @@ fun QqMusicHomeScreen(
                         titleContent = { HomeBrandTitle() },
                     ) {
                         HomeProfileAvatar(
-                            avatarUrl,
+                            avatar.takeIf { it.isNotBlank() },
                             state.loaded,
                             onProfile,
-                            decorationUrl = decorationUrl,
-                            decorationScale = scales[decoration] ?: 1.0,
                         )
                     }
                 },

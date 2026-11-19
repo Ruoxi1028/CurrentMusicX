@@ -73,10 +73,9 @@ class QqArtistViewModel(val container: AppContainer, val mid: String) : ViewMode
             container.ready.await()
             reload()
             combine(
-                container.accountRepository.sessionRevision,
                 container.musicSettings.state.map { it.server }.distinctUntilChanged(),
                 container.qqMusic.state.map { it.revision }.distinctUntilChanged(),
-            ) { _, _, _ -> Unit }.drop(1).collect { reload() }
+            ) { _, _ -> Unit }.drop(1).collect { reload() }
         }
     }
 

@@ -106,12 +106,8 @@ import java.util.Locale
             }
             if (binding.stale) BindingNotice("网易云登录已失效，请重新登录网易云后继续使用音乐库。")
             else if (mainLibrary) Text("已直接连接网易云我喜欢与歌单", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
-            else if (binding.lastSync > 0) {
-                val date = remember(binding.lastSync) { SimpleDateFormat("MM月dd日 HH:mm", Locale.getDefault()).format(Date(binding.lastSync * 1000)) }
-                Text("已同步 ${binding.lastSyncCount} 个歌单 · $date", fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
-            } else Text("连接已完成，可以同步你的网易云歌单。", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
-            GlassActionButton(if (mainLibrary) "刷新网易云音乐库" else "同步网易云歌单", onSync,
+            else Text("连接已完成，点红心与歌单直接读写网易云账号。", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
+            GlassActionButton("刷新网易云音乐库", onSync,
                 Modifier.fillMaxWidth().testTag("sync_binding"), primary = true, enabled = !busy)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 BindingAction("检查登录态", onLive, Modifier.weight(1f), !busy, Icons.Default.Check, fillWidth = true)

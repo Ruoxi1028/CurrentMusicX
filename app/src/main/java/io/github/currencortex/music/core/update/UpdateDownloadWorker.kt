@@ -67,9 +67,7 @@ open class UpdateDownloadWorker(context: Context, params: WorkerParameters) : Co
     override suspend fun getForegroundInfo() = foreground(release(), UpdateTransferState())
 
     protected open fun downloader(): UpdateDownload = UpdateDownloader(okhttp3.OkHttpClient(),
-        File(applicationContext.cacheDir, "updates/$id"), cache = UpdateArtifactCache(File(applicationContext.cacheDir, "updates")), urlFor = { release, source ->
-            (applicationContext as io.github.currencortex.music.CurrentMusicApplication).container.updateAssetUrl(release, source)
-        })
+        File(applicationContext.cacheDir, "updates/$id"), cache = UpdateArtifactCache(File(applicationContext.cacheDir, "updates")))
 
     override suspend fun doWork(): Result = coroutineScope {
         (applicationContext as io.github.currencortex.music.CurrentMusicApplication).container.sessionRestored.await()

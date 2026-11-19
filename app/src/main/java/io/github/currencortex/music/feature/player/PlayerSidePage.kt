@@ -244,8 +244,7 @@ internal class PlayerSidePageState(private val scope: CoroutineScope) {
     }
 }
 
-@Composable internal fun PlayerSidePageContent(song: Song?, navigation: PlayerSongNavigation,
-    aiEnabled: Boolean, onAi: () -> Unit) {
+@Composable internal fun PlayerSidePageContent(song: Song?, navigation: PlayerSongNavigation) {
     val colors = MiuixTheme.colorScheme
     BoxWithConstraints(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
@@ -274,9 +273,6 @@ internal class PlayerSidePageState(private val scope: CoroutineScope) {
                     enabled = navigation.albumEnabled && !navigation.albumLoading, modifier = Modifier.testTag("side_open_album"))
             } } }
             if (song != null) item { Card { Column {
-                MusicDestinationRow("歌曲 AI 解读", onAi, enabled = aiEnabled,
-                    summary = if (aiEnabled) "创作背景 · 歌词含义" else "当前歌曲暂不支持 AI 解读",
-                    modifier = Modifier.testTag("side_open_ai"))
                 MusicDestinationRow("艺人百科", { navigation.openArtists(true) }, enabled = navigation.artistsEnabled,
                     summary = if (playerArtistLinks(song).isNotEmpty()) "艺人简介 · 音乐经历" else "搜索歌手后查看资料",
                     modifier = Modifier.testTag("side_open_biography"))

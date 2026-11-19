@@ -24,7 +24,6 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
     val playlistError = MutableStateFlow<String?>(null)
     val primaryLikeBusy = MutableStateFlow(false)
     val batchFavorites = MutableStateFlow(BatchFavoriteState())
-    val statuses = container.libraryRepository.statuses
     private val refreshRequest = MutableStateFlow(0)
     private var prefetchJob: Job? = null
     private var playlistLoad: Job? = null
@@ -32,19 +31,19 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
     init {
         viewModelScope.launch {
             container.sessionRestored.await()
-            launch { container.accountRepository.sessionRevision.drop(1).collect {
+            launch { container.neteaseSessions.state.map { it.revision }.distinctUntilChanged().drop(1).collect {
                 playlistLoad?.cancel(); selectedSong.value = null
                 availablePlaylists.value = emptyList(); playlistError.value = null
             } }
             var identity: List<Any?>? = null
-            combine(container.accountRepository.state.map { it.account?.id }.distinctUntilChanged(),
+            combine(container.neteaseSessions.state.map { it.profile?.uid }.distinctUntilChanged(),
                 container.musicSettings.state.map { it.server }.distinctUntilChanged(), container.libraryRepository.revision,
                 refreshRequest, container.primaryLibrary.identity) { id, server, revision, refresh, primary -> listOf(id, server, revision, refresh, primary) }
                 .combine(container.neteaseLibrary.revision) { keys, revision -> keys + revision }
                 .combine(container.neteaseSessions.state.map { it.profile?.uid }.distinctUntilChanged()) { keys, uid -> keys + uid }
                 .collectLatest { keys ->
                     prefetchJob?.cancel()
-                    // Clear personalized cards when either the project or bound NetEase account changes.
+                    // Clear personalized cards when the bound NetEase account changes.
                     val nextIdentity = keys.take(2) + listOf(keys[4], keys.last())
                     val sameAccount = identity == nextIdentity
                     identity = nextIdentity
@@ -52,11 +51,11 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                     home.value = if (sameAccount) home.value.copy(loading = true, errors = emptyMap(), pendingSections = pending)
                         else LibraryHomeState(loading = true, pendingSections = pending)
                     loadHome()
-                    if (container.accountRepository.token != null || container.nativeNetease != null) prefetchJob = viewModelScope.launch {
+                    if (container.nativeNetease != null) prefetchJob = viewModelScope.launch {
                         launch { appResult { container.primaryLibrary.likedPlaylist() } }
                         home.value.playlists.firstOrNull()?.let { playlist -> launch { appResult {
                             if (playlist.source == "netease") container.neteaseLibrary.playlist(playlist.id)
-                            else container.libraryRepository.playlist(playlist.id)
+                            else container.qqMusic.playlist(playlist.remoteId)
                         } } }
                     }
                 }
@@ -70,7 +69,7 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
     fun refreshForNewDay() { if (homeDay != LocalDate.now()) refresh() }
     private suspend fun loadHome() = coroutineScope {
         homeDay = LocalDate.now()
-        if (container.accountRepository.token == null && container.nativeNetease == null) { home.value = LibraryHomeState(loaded = true); return@coroutineScope }
+        if (container.nativeNetease == null) { home.value = LibraryHomeState(loaded = true); return@coroutineScope }
         suspend fun <T> section(name: String, request: suspend () -> T, update: (LibraryHomeState, T) -> LibraryHomeState) {
             when (val r = appResult { request() }) {
                 is AppResult.Success -> home.update { update(it, r.value).copy(pendingSections = it.pendingSections - name) }
@@ -86,7 +85,6 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
         home.update { it.copy(loading = false, loaded = true, pendingSections = emptySet()) }
     }
     fun choosePlaylist(song: Song) {
-        if (song.emby != null) { message.value = "Emby 歌单当前仅支持浏览"; return }
         if (busy.value) return
         selectedSong.value = song
         availablePlaylists.value = emptyList()
@@ -104,9 +102,6 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                     }
                     return@launch
                 }
-                // Direct NetEase is the primary destination. Do not hold its picker behind a
-                // slow legacy library; custom CurrentMusic playlists remain available with
-                // the explicitly selected CurrentMusic library.
                 if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME) {
                     val expectedNav = container.navidrome.session()
                     val result = appResult { container.navidrome.playlists().filter { it.owned }.map {
@@ -118,16 +113,14 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                     }
                     return@launch
                 }
-                val current = if (container.accountRepository.token == null) AppResult.Success(emptyList())
-                    else appResult { container.libraryRepository.playlists().filter { it.editable(container.accountRepository.state.value.account?.id ?: 0) } }
+                // Direct NetEase is the primary destination for NetEase-source songs.
                 val native = appResult {
                     if (container.bindingRepository.cachedStatus().bound) container.neteaseLibrary.playlists(fresh = true).filter { it.nativeOwned }
                     else emptyList()
                 }
                 if (expected != container.musicSession()) return@launch
-                availablePlaylists.value = (native as? AppResult.Success)?.value.orEmpty() + (current as? AppResult.Success)?.value.orEmpty()
-                playlistError.value = listOfNotNull((native as? AppResult.Failure)?.kind?.message,
-                    (current as? AppResult.Failure)?.kind?.message).distinct().joinToString("；").ifBlank { null }
+                availablePlaylists.value = (native as? AppResult.Success)?.value.orEmpty()
+                playlistError.value = (native as? AppResult.Failure)?.kind?.message
             }
             finally { busy.value = false }
         }
@@ -138,8 +131,7 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
         action("已加入歌单") {
             if (playlist.source == "qqmusic") container.qqMusic.addToPlaylist(playlist.remoteId, listOf(song))
             else if (playlist.source == "navidrome") container.navidrome.add(playlist.remoteId, song)
-            else if (playlist.source == "netease") container.neteaseLibrary.add(playlist.id, song)
-            else container.libraryRepository.add(playlist.id, listOf(song))
+            else container.neteaseLibrary.add(playlist.id, song)
             if (!song.privateLibrary) container.libraryRepository.invalidate(); selectedSong.value = null
         }
     }
@@ -171,10 +163,8 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                             val id = io.github.currencortex.music.data.song.NeteaseSongActionsRepository.songId(song)
                                 ?: throw ApiException(ErrorKind.NotFound)
                             container.neteaseSongActions.setLiked(id, desired, expected, song, expectedUid = uid)
-                        } else when (val write = container.libraryRepository.setLiked(song, desired, expected)) {
-                            is AppResult.Success -> Unit
-                            is AppResult.Failure -> throw ApiException(write.kind)
-                        }
+                        } else throw ApiException(ErrorKind.NotFound,
+                            userMessage = "这首歌不在支持的平台，无法收藏")
                     }, progress = { count -> batchFavorites.update { it.copy(completed = count) } })
                     when (outcome) {
                         is AppResult.Success -> Unit
@@ -214,14 +204,6 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                         }
                         return@appResult container.qqMusic.toggleLiked(song, desiredLiked)
                     }
-                    if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY) {
-                        val embySession = container.emby.session()
-                        restore = {
-                            if (embySession != container.emby.session()) throw ApiException(ErrorKind.Unauthorized)
-                            container.emby.setLiked(song, true); Unit
-                        }
-                        return@appResult container.emby.toggleLike(song)
-                    }
                     if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME) {
                         val navSession = container.navidrome.session()
                         restore = {
@@ -236,18 +218,7 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
                         val uid = container.neteaseSongActions.boundUid(expected)
                         restore = { container.neteaseSongActions.setLiked(id, true, expected, song, expectedUid = uid) }
                         container.neteaseSongActions.toggleLiked(id, song)
-                    } else {
-                        restore = {
-                            when (val write = container.libraryRepository.setLiked(song, true)) {
-                                is AppResult.Failure -> throw ApiException(write.kind)
-                                is AppResult.Success -> Unit
-                            }
-                        }
-                        when (val write = container.libraryRepository.toggleLike(song)) {
-                        is AppResult.Success -> container.libraryRepository.statuses.value[song.id]?.liked == true
-                        is AppResult.Failure -> throw ApiException(write.kind)
-                        }
-                    }
+                    } else throw ApiException(ErrorKind.NotFound, userMessage = "这首歌不在支持的平台，无法收藏")
                 }) {
                     is AppResult.Success -> if (expected == container.musicSession() && expectedQq == container.qqMusic.audioIdentity) {
                         if (!song.privateLibrary) container.libraryRepository.invalidate()
@@ -281,7 +252,7 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
     }
     fun create(name: String, description: String, done: () -> Unit) = action("歌单已创建") {
         if (container.nativeNetease != null && container.primaryLibrary.resolveNetease()) container.neteaseLibrary.create(name)
-        else container.libraryRepository.create(name, description)
+        else throw ApiException(ErrorKind.NeteaseBindingRequired, userMessage = "请先登录网易云账号")
         done()
     }
     fun action(success: String, block: suspend () -> Unit) {
@@ -307,12 +278,6 @@ class LibraryViewModel(val container: AppContainer) : ViewModel() {
         if (qq.isNotEmpty() && container.qqMusic.state.value.loggedIn) container.qqMusic.refreshLiked(qq)
         val online = songs.filter { !it.privateLibrary && it.musicSource == io.github.currencortex.music.data.song.MusicSource.NETEASE }
         if (online.isEmpty()) return@appResult
-        if (container.primaryLibrary.resolveLikeNetease()) container.neteaseSongActions.likedIds()
-    } }
-    fun refreshStatuses(songs: List<Song>) = viewModelScope.launch { appResult {
-        val legacySongs = songs.filterNot { it.musicSource in setOf(io.github.currencortex.music.data.song.MusicSource.EMBY, io.github.currencortex.music.data.song.MusicSource.NAVIDROME,
-            io.github.currencortex.music.data.song.MusicSource.LOCAL, io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC) }
-        if (legacySongs.isEmpty()) return@appResult
         if (container.primaryLibrary.resolveLikeNetease()) container.neteaseSongActions.likedIds()
     } }
 }
@@ -354,7 +319,7 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
             container.bindingRepository.state.value?.let { binding ->
                 binding.bound && !binding.stale && it.ownerId == binding.profile?.uid
             } == true
-        else it.editable(accountId)
+        else false
     } == true
     fun removable(playlist: Playlist?, accountId: Long) = playlist?.let {
         if (it.source == "qqmusic") it.nativeOwned && !it.nativeLiked && container.qqMusic.state.value.loggedIn else
@@ -364,7 +329,7 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
                 binding.bound && !binding.stale && uid > 0 &&
                     (if (it.nativeOwned) it.ownerId == uid else it.nativeSubscribed)
             } == true
-        else it.editable(accountId)
+        else false
     } == true
     fun subscribable(playlist: Playlist?) = playlist?.takeUnless { qqLikedSongs }?.let {
         (it.source == "qqmusic" && !it.nativeOwned && !it.nativeLiked && container.qqMusic.state.value.loggedIn) ||
@@ -388,7 +353,7 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
         val playlist = state.value.playlist ?: throw ApiException(ErrorKind.NotFound)
         if (playlist.source == "qqmusic") container.qqMusic.renamePlaylist(playlist.remoteId, name)
         else if (playlist.source == "netease") container.neteaseLibrary.rename(id, name)
-        else container.libraryRepository.rename(id, name)
+        else throw ApiException(ErrorKind.Forbidden)
     }
     suspend fun delete() {
         val playlist = state.value.playlist ?: throw ApiException(ErrorKind.NotFound)
@@ -397,13 +362,13 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
             if (playlist.nativeOwned) container.neteaseLibrary.delete(id)
             else container.neteaseLibrary.unsubscribe(id)
         }
-        else container.libraryRepository.delete(id)
+        else throw ApiException(ErrorKind.Forbidden)
     }
     suspend fun remove(song: Song) {
         val playlist = state.value.playlist ?: throw ApiException(ErrorKind.NotFound)
         if (playlist.source == "qqmusic") container.qqMusic.removeFromPlaylist(playlist.remoteId, listOf(song))
         else if (playlist.source == "netease") container.neteaseLibrary.remove(id, song)
-        else container.libraryRepository.remove(id, song)
+        else throw ApiException(ErrorKind.Forbidden)
     }
     init {
         // LocalMusicScreen owns MediaStore scanning/permission state and uses the same
@@ -411,13 +376,12 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
         if (kind != "local") viewModelScope.launch {
             container.sessionRestored.await()
             var identity: List<Any?>? = null
-            combine(container.accountRepository.state.map { it.account?.id }.distinctUntilChanged(),
+            combine(container.neteaseSessions.state.map { it.profile?.uid }.distinctUntilChanged(),
                 container.musicSettings.state.map { it.server }.distinctUntilChanged(), container.libraryRepository.revision,
                 container.primaryLibrary.identity, container.neteaseLibrary.revision,
                 container.qqMusic.state.map { if (qqNative) it.revision else 0L }.distinctUntilChanged(),
-                container.accountRepository.sessionRevision,
-                // Native heart changes update the row icons directly. They do not change
-                // a CurrentMusic playlist's membership, including during bulk imports.
+                container.neteaseSessions.state.map { it.revision }.distinctUntilChanged(),
+                // Native heart changes update the row icons directly.
                 container.neteaseSongActions.revision.map { if (kind == "playlist") 0L else it }.distinctUntilChanged()) { keys -> keys.toList() }
                 .combine(container.neteaseSessions.state.map { it.profile?.uid }.distinctUntilChanged()) { keys, uid -> keys + uid }
                 .collectLatest { keys ->
@@ -504,8 +468,7 @@ class LibraryDetailViewModel(val container: AppContainer, val route: String) : V
                             cover = playlist.cover,
                             songs = playlist.songs, playlist = playlist, more = playlist.songs.size < playlist.count)
                     }
-                    "playlist" -> container.libraryRepository.playlist(id, fresh = force).let { previous.copy(title = it.name, description = it.description,
-                        cover = it.cover, songs = it.songs, playlist = it) }
+                    "playlist" -> throw ApiException(ErrorKind.NotFound)
                     "artist" -> container.libraryRepository.artist(id, if (more) previous.songs.size else 0).let { previous.copy(title = it.name,
                         description = it.description, cover = it.cover, songs = if (more) (previous.songs + it.songs).distinctBy(Song::id) else it.songs,
                         albums = if (more) previous.albums else it.albums, more = it.more, moreAlbums = if (more) previous.moreAlbums else it.albumTotal > it.albums.size) }

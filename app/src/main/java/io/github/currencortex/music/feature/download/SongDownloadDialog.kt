@@ -42,14 +42,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     val context = LocalContext.current
     val manager = container.songDownloads
     val directory by manager.directory.collectAsStateWithLifecycle()
-    val project by container.accountRepository.state.collectAsStateWithLifecycle()
     val qqAccount by container.qqMusic.state.collectAsStateWithLifecycle()
     val settings by container.musicSettings.state.collectAsStateWithLifecycle()
-    val audioProvider by container.audioSettings.state.collectAsStateWithLifecycle()
-    val owner = remember(song.id, song.musicSource, project.account?.id, settings.server, qqAccount.revision, audioProvider.identity) {
+    val owner = remember(song.id, song.musicSource, settings.server, qqAccount.revision) {
         if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC) {
             container.qqMusic.selectOwner()
-            manager.ownerKey(song, project.account?.id ?: 0L, container.accountRepository.server,
+            manager.ownerKey(song, 0L, container.musicSession().server,
                 container.qqAudioIdentity(), container.qqMusic.state.value.revision.toString())
         } else ""
     }
@@ -67,20 +65,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
                 container.qqMusic.selectOwner()
                 val account = container.qqMusic.state.value
                 if (!account.loggedIn) { context.showMusicError("请先登录 QQ 音乐"); return }
-                manager.start(song, AudioQuality.from(quality), container.accountRepository.state.value.account?.id ?: 0L,
-                    container.accountRepository.server, container.qqAudioIdentity(),
+                manager.start(song, AudioQuality.from(quality), 0L,
+                    container.musicSession().server, container.qqAudioIdentity(),
                     navidromeRevision = account.revision.toString())
-            } else if (song.emby != null) {
-                val account = container.emby.state.value
-                if (!account.download) { context.showMusicError("此 Emby 账号不允许下载"); return }
-                manager.start(song, AudioQuality.from(quality), 0, account.server, "emby:" + account.identity,
-                    navidromeRevision = account.revision)
             } else if (song.navidrome != null) {
                 val account = container.navidrome.state.value
                 manager.start(song, AudioQuality.from(quality), 0, account.server, "navidrome:" + account.identity,
                     navidromeRevision = account.revision)
-            } else manager.start(song, AudioQuality.from(quality), container.accountRepository.state.value.account?.id ?: 0L,
-                container.accountRepository.server, container.audioSettings.access().identity,
+            } else manager.start(song, AudioQuality.from(quality), 0L,
+                container.musicSession().server, "netease",
                 if (container.nativeNetease != null) container.neteaseSessions.state.value.profile?.uid ?: 0L else -1)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { context.showMusicError("无法开始下载，请重试") }

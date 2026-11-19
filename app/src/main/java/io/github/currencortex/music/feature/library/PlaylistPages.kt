@@ -73,11 +73,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     qqPlaylists: List<Playlist>? = null, qqLoading: Boolean = false,
     qqError: String? = null, onQqRefresh: () -> Unit = {}) {
     val home by vm.home.collectAsStateWithLifecycle()
-    val account by vm.container.accountRepository.state.collectAsStateWithLifecycle()
     val nativeAccount by vm.container.neteaseSessions.state.collectAsStateWithLifecycle()
     val qqAccount by vm.container.qqMusic.state.collectAsStateWithLifecycle()
     val sourcePlaylists = qqPlaylists ?: home.playlists
-    val loading = if (qqPlaylists == null) home.loading || account.loading else qqLoading
+    val loading = if (qqPlaylists == null) home.loading else qqLoading
     val sourceErrors = if (qqPlaylists == null) home.errors
         else listOfNotNull(qqError).associateBy { "我的歌单" }
     val refresh = if (qqPlaylists == null) vm::refresh else onQqRefresh
@@ -90,13 +89,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     var playlistPreview by remember { mutableStateOf<Pair<Playlist, Rect>?>(null) }
     val playlistPlayback = rememberPlaylistPreviewPlayback(vm, play)
     var category by rememberSaveable { mutableStateOf(PlaylistCategory.ALL) }
-    val playlists = remember(sourcePlaylists, category, account.account?.id) {
-        sourcePlaylists.filter { category.includes(it, account.account?.id ?: 0) }
+    val playlists = remember(sourcePlaylists, category) {
+        sourcePlaylists.filter { category.includes(it, 0) }
     }
     MusicSubpage("我的歌单", "playlist_index_page", onBack, actions = {
         if (qqPlaylists != null) {
             if (qqAccount.loggedIn) GlassIconButton(onCreate, "新建歌单", Modifier.testTag("create_playlist")) { Icon(Icons.Default.Add, null) }
-        } else if (account.account != null || (nativeAccount.loggedIn && !nativeAccount.stale))
+        } else if (nativeAccount.loggedIn && !nativeAccount.stale)
             GlassIconButton(onCreate, "新建歌单", Modifier.testTag("create_playlist")) { Icon(Icons.Default.Add, null) }
     }) { topInset ->
     MusicPullToRefresh(loading, refresh, Modifier.fillMaxSize(), showIndicator = false) {
@@ -116,10 +115,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
             }
             if (!loading && sourcePlaylists.isEmpty() && sourceErrors["我的歌单"] == null)
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxSize().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(MusicIcons.List, null, Modifier.size(40.dp), tint = MiuixTheme.colorScheme.primary.copy(alpha = .6f))
-                        Text(if (qqPlaylists != null && !qqAccount.loggedIn) "登录 QQ 音乐后查看你的歌单" else if (account.account == null) "登录后查看你的歌单" else "为喜欢的音乐建一个歌单", Modifier.padding(top = 16.dp), fontSize = 17.sp)
-                        Text(if (qqPlaylists != null && !qqAccount.loggedIn) "同步 QQ 音乐的自建与收藏歌单" else if (account.account == null) "绑定网易云账号后也可同步收藏" else "点右上角 + 开始收藏", Modifier.padding(top = 8.dp),
+                        Text(if (qqPlaylists != null && !qqAccount.loggedIn) "登录 QQ 音乐后查看你的歌单"
+                            else if (!(nativeAccount.loggedIn && !nativeAccount.stale)) "登录网易云后查看你的歌单"
+                            else "为喜欢的音乐建一个歌单", Modifier.padding(top = 16.dp), fontSize = 17.sp)
+                        Text(if (qqPlaylists != null && !qqAccount.loggedIn) "同步 QQ 音乐的自建与收藏歌单"
+                            else if (!(nativeAccount.loggedIn && !nativeAccount.stale)) "在「我的」登录网易云账号后同步我喜欢与歌单"
+                            else "点右上角 + 开始收藏", Modifier.padding(top = 8.dp),
                             fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = .5f))
                     }
                 }
@@ -170,21 +173,18 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
         if (localMusic == null) vm.reload(force = true)
         else if (localMusic.allowed) localMusic.rescan() else localMusic.requestPermission()
     }
-    val account by vm.container.accountRepository.state.collectAsStateWithLifecycle()
-    val statuses by library.statuses.collectAsStateWithLifecycle()
     val likesUseNetease by vm.container.primaryLibrary.likesUseNetease.collectAsStateWithLifecycle()
     val neteaseLikes by vm.container.neteaseSongActions.likedState.collectAsStateWithLifecycle()
     val qqLikes by vm.container.qqMusic.likedState.collectAsStateWithLifecycle()
     val qqAccount by vm.container.qqMusic.state.collectAsStateWithLifecycle()
     val navidromeLikes by vm.container.navidrome.likes.collectAsStateWithLifecycle()
-    val embyLikes by vm.container.emby.likes.collectAsStateWithLifecycle()
     val likeBusy by library.primaryLikeBusy.collectAsStateWithLifecycle()
     val batch by library.batchFavorites.collectAsStateWithLifecycle()
     val musicSettings by vm.container.musicSettings.state.collectAsStateWithLifecycle()
     val binding by vm.container.bindingRepository.state.collectAsStateWithLifecycle()
     val selectionAllowed = localMusic == null && playlistSupportsMultiSelect(vm.route)
-    var selecting by remember(vm.route, account.account?.id, binding?.profile?.uid, musicSettings.server) { mutableStateOf(false) }
-    var selectedKeys by remember(vm.route, account.account?.id, binding?.profile?.uid, musicSettings.server) { mutableStateOf(emptySet<String>()) }
+    var selecting by remember(vm.route, binding?.profile?.uid, musicSettings.server) { mutableStateOf(false) }
+    var selectedKeys by remember(vm.route, binding?.profile?.uid, musicSettings.server) { mutableStateOf(emptySet<String>()) }
     fun exitSelection() { selecting = false; selectedKeys = emptySet() }
     BackHandler(selecting) { if (!batch.running) exitSelection() }
     LaunchedEffect(state.songs) {
@@ -199,12 +199,10 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
         !playback.value.showPause && (queue.value.positionMs > 0 || playback.value.positionMs > 0)
     } }
     val busy by library.busy.collectAsStateWithLifecycle()
-    val importState by vm.container.playlistLikeImporter.state.collectAsStateWithLifecycle()
-    var importOpen by rememberSaveable(vm.route) { mutableStateOf(false) }
     val appearance by vm.container.settings.state.collectAsStateWithLifecycle()
     val room = LocalRoomSongRequest.current
-    val editable = vm.editable(state.playlist, account.account?.id ?: 0)
-    val removable = vm.removable(state.playlist, account.account?.id ?: 0)
+    val editable = vm.editable(state.playlist, 0)
+    val removable = vm.removable(state.playlist, 0)
     val subscribable = vm.subscribable(state.playlist)
     val subscribed = state.playlist?.nativeSubscribed == true
     val qqUnknownSubscription = state.playlist?.source == "qqmusic" && !state.playlist.nativeSubscriptionKnown
@@ -282,11 +280,10 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
             nextPreviewRequests = preview.nextRequests,
             isSaved = { song -> when {
                 song.navidrome != null -> navidromeLikes[song.id] == true
-                song.emby != null -> embyLikes[song.id] == true
                 song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC -> song.id in qqLikes
                 song.musicSource == io.github.currencortex.music.data.song.MusicSource.NETEASE ->
                     io.github.currencortex.music.data.song.NeteaseSongActionsRepository.songId(song) in neteaseLikes
-                else -> statuses[song.id]?.liked == true
+                else -> false
             } },
             onSave = if (localMusic != null) null else { song -> library.togglePrimaryLike(song, undoable = true) }, saveEnabled = !likeBusy,
             onClose = { scope.launch { vm.container.settings.edit { it.copy(playlistRecordShelf = false) } } })
@@ -331,14 +328,14 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
         state.playlist?.source == "qqmusic" -> "QQ 音乐"
         state.playlist?.source == "ncm" -> "网易云音乐 · 同步歌单只读"
         state.playlist?.source == "netease" -> "网易云音乐"
-        editable -> account.account?.nickname.orEmpty().ifBlank { "我的歌单" }
-        vm.route == "lib/likes" -> "CurrentMusic · 我喜欢"
+        editable -> "我的歌单"
+        vm.route == "lib/likes" -> "网易云 · 我喜欢"
         vm.route == "lib/daily" -> "每日为你推荐"
         vm.route == "lib/foryou" -> "根据你的音乐喜好推荐"
         vm.route == "lib/recent" -> "最近听过的音乐"
         vm.route == "lib/cloud" -> "网易云音乐"
         vm.route == "qq/daily" -> "QQ 音乐 · ${if (qqAccount.loggedIn) "每日推荐" else "新歌推荐"}"
-        else -> "CurrentMusic 歌单"
+        else -> "我的歌单"
     }
     val heroOrigin = when (state.playlist?.source) {
         "ncm" -> "网易云音乐"
@@ -508,8 +505,7 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
                                     io.github.currencortex.music.data.song.MusicSource.NETEASE ->
                                         io.github.currencortex.music.data.song.NeteaseSongActionsRepository.songId(song) in neteaseLikes
                                     io.github.currencortex.music.data.song.MusicSource.NAVIDROME -> navidromeLikes[song.id] == true
-                                    io.github.currencortex.music.data.song.MusicSource.EMBY -> embyLikes[song.id] == true
-                                    else -> statuses[song.id]?.liked == true
+                                    else -> false
                                 }, play = { play(songs, index) },
                                 next = { vm.container.playerController.add(song, true) }, enqueue = { vm.container.playerController.add(song) },
                                 onMultiSelect = if (selectionAllowed && supportsBatchFavorite(song)) ({
@@ -558,14 +554,6 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
         }, modifier = Modifier.testTag("playlist_depth_ribbon_toggle"), chevron = false)
         MusicDestinationRow("${collectionKind}信息", { menuOpen = false; infoOpen = true }, modifier = Modifier.testTag("playlist_menu_info"), chevron = false)
         MusicDestinationRow(if (localMusic != null) "重新扫描本地音乐" else "刷新歌单", { menuOpen = false; refresh() }, chevron = false)
-        if (state.playlist?.editable(account.account?.id ?: 0) == true && state.playlist?.source != "qqmusic") {
-            MusicDestinationRow(if (importState.running) "查看网易云导入进度" else "一键导入网易云我喜欢", {
-                menuOpen = false
-                if (!importState.running) vm.container.playlistLikeImporter.start(vm.id, state.title)
-                importOpen = true
-            }, enabled = !state.loading && state.songs.isNotEmpty(),
-                modifier = Modifier.testTag("playlist_import_netease_likes"), chevron = false)
-        }
         if (subscribable && !subscribed) {
             MusicDestinationRow("收藏歌单", { menuOpen = false; subscribe() },
                 enabled = !busy && !state.loading && !state.refreshing,
@@ -595,9 +583,6 @@ internal data class LocalMusicPlaylistActions(val allowed: Boolean, val rescan: 
         Text(state.description.ifBlank { "暂无歌单介绍" }, Modifier.heightIn(max = 240.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), fontSize = 14.sp)
         MusicDialogButton("关闭", onClick = { infoOpen = false })
     }
-    if (importOpen) PlaylistLikeImportDialog(importState, onClose = { importOpen = false },
-        onStop = vm.container.playlistLikeImporter::stop,
-        onRetry = { vm.container.playlistLikeImporter.start(importState.playlistId, importState.name) })
     }
 }
 

@@ -75,7 +75,7 @@ fun SettingsScreen(onAppearance: () -> Unit, onNetwork: () -> Unit,
             SettingsListSection("音乐") {
                 SettingsPagePreference("播放", "音质、歌曲衔接、预加载与播放行为", MusicIcons.Play,"open_playback",onPlayback)
                 SettingsDivider(52.dp)
-                SettingsPagePreference("音源与网络", "音乐音源、歌词来源与服务器", MusicIcons.Storage,"open_network",onNetwork)
+                SettingsPagePreference("音源与网络", "歌词来源与自建曲库", MusicIcons.Storage,"open_network",onNetwork)
                 SettingsDivider(52.dp)
                 SettingsPagePreference("音效", "智能调音、音效与均衡器", MusicIcons.Headphones,"open_equalizer",onEffects)
                 SettingsDivider(52.dp)

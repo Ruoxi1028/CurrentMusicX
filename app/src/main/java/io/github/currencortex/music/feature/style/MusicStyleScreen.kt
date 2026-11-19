@@ -156,7 +156,6 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
     var fullDescription by rememberSaveable(vm.id) { mutableStateOf(false) }
     val children = state.style?.childrenTags.orEmpty()
     val colors = MiuixTheme.colorScheme
-    LaunchedEffect(state.songs) { library.refreshStatuses(state.songs) }
     PreloadMusicCovers(state.songs.take(12).map(Song::cover))
     MusicPullToRefresh(state.loading, { vm.reload(fresh = true) }, Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
         LazyColumn(Modifier.fillMaxSize().testTag("style_detail"), contentPadding = musicScrollPadding(),

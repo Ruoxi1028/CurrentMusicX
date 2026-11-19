@@ -65,7 +65,7 @@ internal fun WorkInfo?.mvLabel(): String = when {
     var afterFolder by rememberSaveable { mutableStateOf(false) }
     fun start() {
         try {
-            manager.start(song, quality, container.accountRepository.state.value.account?.id ?: 0L,
+            manager.start(song, quality, 0L,
                 container.musicSession().server,
                 if (container.nativeNetease != null) container.neteaseSessions.state.value.profile?.uid ?: 0L else -1)
         } catch (cancelled: CancellationException) { throw cancelled }

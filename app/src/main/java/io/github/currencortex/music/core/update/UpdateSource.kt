@@ -5,7 +5,6 @@ import java.net.URI
 import okhttp3.HttpUrl.Companion.toHttpUrl
 
 enum class UpdateSource(val label: String, val prefix: String) {
-    CURRENTMUSIC("CurrentMusic 专用镜像", ""),
     GITHUB("GitHub 原站", ""),
     TBAP("github.tbap.top", "https://github.tbap.top/"),
     GH_PROXY("gh-proxy.com", "https://gh-proxy.com/"),
@@ -14,18 +13,13 @@ enum class UpdateSource(val label: String, val prefix: String) {
 
     /** Try the requested source once, then the other mirrors, with the origin as the final fallback. */
     fun fallbacks(): List<UpdateSource> = when (this) {
-        CURRENTMUSIC -> listOf(CURRENTMUSIC, GITHUB) + available.filter { it != CURRENTMUSIC && it != GITHUB }
         GITHUB -> listOf(GITHUB) + available.filter { it != GITHUB }
         else -> listOf(this) + available.filter { it != this && it != GITHUB } + GITHUB
     }
 
-    fun url(release: AppRelease, proxy: UpdateProxy = UpdateProxy.current): String {
+    fun url(release: AppRelease): String {
         val official = requireNotNull(release.apkUrl) { "此发布没有 APK" }
         require(official.startsWith("${AppMetadata.RELEASES_PROJECT_URL}/releases/download/")) { "更新来源不匹配" }
-        if (this == CURRENTMUSIC) {
-            require(!release.isCi) { "CurrentMusic 专用镜像仅提供正式版" }
-            return proxy.assetUrl(official.toHttpUrl())
-        }
         if (prefix.isNotEmpty()) require(prefix.startsWith("https://")) { "下载源必须使用 HTTPS" }
         val result = prefix + official
         val uri = URI(result)
@@ -33,24 +27,21 @@ enum class UpdateSource(val label: String, val prefix: String) {
         return result
     }
 
-    /** Repository files use the updater's selected mirror order; the APK-only dedicated service is skipped. */
+    /** Repository files use the updater's selected mirror order. */
     fun repositoryFileUrl(path: String): String {
         require(path.startsWith("/") && !path.contains("..")) { "仓库文件路径无效" }
-        val source = if (this == CURRENTMUSIC) GITHUB else this
         val official = "${AppMetadata.RELEASES_PROJECT_URL}/raw/main$path"
-        val result = source.prefix + official
+        val result = prefix + official
         val uri = URI(result)
         require(uri.scheme == "https" && uri.rawUserInfo == null) { "下载源必须使用 HTTPS" }
         return result
     }
 
     fun repositoryFileFallbacks(): List<UpdateSource> = fallbacks()
-        .filter { it != CURRENTMUSIC }
-        .ifEmpty { listOf(GITHUB) }
 
     companion object {
-        val available: List<UpdateSource> get() = entries.filter { it != CURRENTMUSIC || UpdateProxy.current.configured }
-        val default: UpdateSource get() = if (UpdateProxy.current.configured) CURRENTMUSIC else GITHUB
-        fun forChannel(channel: UpdateChannel) = available.filter { channel != UpdateChannel.CI || it != CURRENTMUSIC }
+        val available: List<UpdateSource> get() = entries
+        val default: UpdateSource get() = GITHUB
+        fun forChannel(channel: UpdateChannel) = available
     }
 }

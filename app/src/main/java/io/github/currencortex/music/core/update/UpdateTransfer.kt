@@ -61,7 +61,7 @@ class UpdateTransfer(private val downloader: UpdateDownload, private val install
         if (job?.isActive == true || mutable.value.installing || mutable.value.download is UpdateDownloadState.Ready ||
             mutable.value.download is UpdateDownloadState.Downloading) return
         val request = ++generation
-        val sources = source.fallbacks().filter { !value.isCi || it != UpdateSource.CURRENTMUSIC }
+        val sources = source.fallbacks()
         mutable.value = UpdateTransferState(UpdateDownloadState.Downloading(0, value.size),
             activeSource = sources.first(), attempt = 1, totalSources = sources.size)
         if (background != null) {

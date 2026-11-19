@@ -40,26 +40,15 @@ open class SongDownloadWorker(context: Context, params: WorkerParameters) : Coro
         container.ready.await(); container.sessionRestored.await()
         val song = ApiJson.decodeFromString<Song>(requireNotNull(inputData.getString("song")))
         val nav = song.navidrome != null
-        val emby = song.emby != null
         val qq = song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC
         fun verifySession() {
             if (qq) {
                 container.qqMusic.selectOwner()
                 val account = container.qqMusic.state.value
                 check(account.loggedIn &&
-                    inputData.getLong("account", -1) == (container.accountRepository.state.value.account?.id ?: 0L) &&
-                    inputData.getString("server") == container.accountRepository.server &&
                     inputData.getString("provider") == container.qqAudioIdentity() &&
                     inputData.getString("navidrome_revision") == account.revision.toString()) {
-                    "QQ 音乐账号或音源已变化，请重新开始下载"
-                }
-                return
-            }
-            if (emby) {
-                val account = container.emby.state.value
-                check(container.emby.accepts(song) && inputData.getString("server") == account.server &&
-                    inputData.getString("provider") == "emby:" + account.identity && inputData.getString("navidrome_revision") == account.revision) {
-                    "Emby 账号已变化，请重新开始下载"
+                    "QQ 音乐账号已变化，请重新开始下载"
                 }
                 return
             }
@@ -71,22 +60,19 @@ open class SongDownloadWorker(context: Context, params: WorkerParameters) : Coro
                 }
                 return
             }
-            check(inputData.getLong("account", -1) == (container.accountRepository.state.value.account?.id ?: 0L) &&
-                inputData.getString("server") == container.accountRepository.server &&
-                inputData.getString("provider") == container.audioSettings.access().identity &&
-                (inputData.getLong("netease_uid", -1) < 0 || inputData.getLong("netease_uid", -1) ==
-                    (container.neteaseSessions.state.value.profile?.uid ?: 0L))) {
-                "账号或音源已变化，请重新开始下载"
+            check(inputData.getLong("netease_uid", -1) < 0 || inputData.getLong("netease_uid", -1) ==
+                (container.neteaseSessions.state.value.profile?.uid ?: 0L)) {
+                "网易云账号已变化，请重新开始下载"
             }
         }
         verifySession()
-        fun currentSession() = if (qq) container.qqMusic.session() else if (emby) container.emby.session()
+        fun currentSession() = if (qq) container.qqMusic.session()
             else if (nav) container.navidrome.session() else container.musicSession()
         val session = currentSession()
         return SongDownloadEngine(File(applicationContext.cacheDir, "song-downloads"),
-            resolve = { track, quality -> verifySession(); if (emby) container.emby.source(track, download = true)
-                else if (nav) container.navidrome.source(track, quality, download = true)
-                else container.musicRepository.source(track, quality, if (qq) session else container.audioSession()) },
+            resolve = { track, quality -> verifySession()
+                if (nav) container.navidrome.source(track, quality, download = true)
+                else container.musicRepository.source(track, quality, if (qq) session else container.musicSession()) },
             detail = { track -> container.musicRepository.detail(track) },
             lyrics = { track -> container.lyricsRepository.load(track).document },
             store = SongDownloadStore(applicationContext),

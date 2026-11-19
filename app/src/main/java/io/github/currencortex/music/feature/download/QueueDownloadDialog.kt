@@ -38,9 +38,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
                 MusicDialogButton("取消", onDismiss, modifier = Modifier.weight(1f))
                 MusicDialogButton("开始下载", {
                     try {
-                        val account = container.accountRepository.state.value.account?.id ?: 0L
-                        val server = container.accountRepository.server
-                        val access = container.audioSettings.access()
+                        val server = container.musicSession().server
                         val uid = if (container.nativeNetease != null) container.neteaseSessions.state.value.profile?.uid ?: 0L else -1L
                         container.qqMusic.selectOwner()
                         val qq = container.qqMusic.state.value
@@ -48,9 +46,9 @@ import top.yukonga.miuix.kmp.basic.TextButton
                             check(qq.loggedIn) { "请先登录 QQ 音乐" }
                         songs.distinctBy { it.id to it.musicSource }.forEach { song ->
                             if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC)
-                                container.songDownloads.start(song, quality, account, server, container.qqAudioIdentity(access),
+                                container.songDownloads.start(song, quality, 0L, server, container.qqAudioIdentity(),
                                     navidromeRevision = qq.revision.toString())
-                            else container.songDownloads.start(song, quality, account, server, access.identity, uid)
+                            else container.songDownloads.start(song, quality, 0L, server, "netease", uid)
                         }
                         onDismiss()
                     } catch (e: Exception) { error = e.message ?: "部分下载任务未能创建，请重试" }

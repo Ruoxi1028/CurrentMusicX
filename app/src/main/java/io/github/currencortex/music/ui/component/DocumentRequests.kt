@@ -129,7 +129,7 @@ private class CreateDocument : ActivityResultContract<DocumentTarget, Uri?>() {
         check(pending == null && !preparing) { "请先完成当前文件选择" }
         // Import only needs the immutable song identity, not artwork or playback metadata.
         val target = Song(song.id, "", musicSource = song.musicSource, externalIds = song.externalIds,
-            navidrome = song.navidrome, emby = song.emby)
+            navidrome = song.navidrome)
         pending = ApiJson.encodeToString(DocumentRequest(UUID.randomUUID().toString(), song = target))
         try { importer.launch(arrayOf("*/*")) }
         catch (failure: Exception) { pending = null; throw failure }

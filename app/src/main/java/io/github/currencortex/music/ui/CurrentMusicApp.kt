@@ -112,7 +112,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import io.github.currencortex.music.feature.search.*
-import io.github.currencortex.music.feature.auth.*
 import io.github.currencortex.music.feature.player.*
 import io.github.currencortex.music.feature.settings.MusicSettingsViewModel
 import io.github.currencortex.music.feature.settings.MusicSettingsScreen
@@ -122,9 +121,9 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import io.github.currencortex.music.feature.library.*
 import io.github.currencortex.music.data.song.Song
 import java.net.URLDecoder
-import io.github.currencortex.music.feature.profile.*
 import io.github.currencortex.music.feature.binding.*
 import io.github.currencortex.music.feature.room.*
+import io.github.currencortex.music.feature.provider.ProviderAccountScreen
 
 private fun isPlaylistRoute(route: String) = route == "lib/local" ||
     route.startsWith("lib/playlist/") || route.startsWith("lib/ncmplaylist/") ||
@@ -148,9 +147,8 @@ private const val SEARCH = 23
 private const val STORAGE = 24
 private const val EQUALIZER = 25
 private const val HOME_TAB = 0
-private const val DISCOVER_TAB = 1
-private const val ME_TAB = 2
-private const val SETTINGS_TAB = 3
+private const val ME_TAB = 1
+private const val SETTINGS_TAB = 2
 private fun LegalDocument.route() = 3 + ordinal
 private val NavigationStackSaver = androidx.compose.runtime.saveable.listSaver<List<String>, String>(
     save = { it },
@@ -162,7 +160,6 @@ private val NavigationStackSaver = androidx.compose.runtime.saveable.listSaver<L
 fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, launchWindowReady: Boolean = true, openDesktopRequest: Int = 0, openRecognitionRequest: Int = 0,
     webLinkRequest: io.github.currencortex.music.core.links.WebLinkRequest? = null, onWebLinkConsumed: (String) -> Unit = {}) {
     val documentRequests = rememberDocumentRequests(container)
-    var embyNavigation by remember { mutableStateOf<io.github.currencortex.music.feature.emby.EmbyNavigation?>(null) }
     var launchFinished by rememberSaveable { mutableStateOf(!animateLaunch) }
     val launchBrand = remember { LaunchBrandState() }
     val avatarFlight = remember { AvatarFlightState() }
@@ -221,7 +218,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     }
 
     val searchVm: SearchViewModel = viewModel(factory = viewModelFactory { SearchViewModel(container) })
-    val authVm: AuthViewModel = viewModel(factory = viewModelFactory { AuthViewModel(container) })
     val musicSettingsVm: MusicSettingsViewModel = viewModel(factory = viewModelFactory { MusicSettingsViewModel(container) })
     val playerVm: PlayerViewModel = viewModel(factory = viewModelFactory { PlayerViewModel(container) })
     val libraryVm: LibraryViewModel = viewModel(factory = viewModelFactory { LibraryViewModel(container) })
@@ -230,14 +226,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     val navidromeVm: io.github.currencortex.music.feature.navidrome.NavidromeViewModel = viewModel(factory = viewModelFactory {
         io.github.currencortex.music.feature.navidrome.NavidromeViewModel(container)
     })
-    val profileVm: ProfileViewModel = viewModel(key = "my-profile", factory = viewModelFactory { ProfileViewModel(container) })
-    val myProfile by profileVm.state.collectAsStateWithLifecycle()
-    val discoverVm: DiscoverViewModel = viewModel(factory = viewModelFactory { DiscoverViewModel(container) })
-    val profileDialog by profileVm.dialog.collectAsStateWithLifecycle()
-    val profileMessage by profileVm.message.collectAsStateWithLifecycle()
-    val account by container.accountRepository.state.collectAsStateWithLifecycle()
-    val sessionRevision by container.accountRepository.sessionRevision.collectAsStateWithLifecycle()
-    LaunchedEffect(sessionRevision) { profileVm.dialog.value = null; profileVm.avatar.value = null; profileVm.message.value = null }
     val libraryMessage by libraryVm.message.collectAsStateWithLifecycle()
     val libraryDialogSong by libraryVm.selectedSong.collectAsStateWithLifecycle()
     // Position and loading updates belong to the player, not the entire navigation tree.
@@ -249,7 +237,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     }
     val searchKeyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val searchFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val roomLive by container.roomSession.state.collectAsStateWithLifecycle()
     val nativeTogether by container.listenTogether.state.collectAsStateWithLifecycle()
     val tabsState = rememberSaveableStateHolder()
     var backStack by rememberSaveable(stateSaver = NavigationStackSaver) { mutableStateOf(listOf(ROOT.toString())) }
@@ -282,18 +269,16 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             LocalRefreshRatePreference provides settings.refreshRate) {
         Box(Modifier.fillMaxSize().musicRefreshRate(settings.refreshRate)) {
         var selected by rememberSaveable { mutableIntStateOf(HOME_TAB) }
-        val discoverPager = androidx.compose.foundation.pager.rememberPagerState { 4 }
         var startupRouted by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(container) {
             if (!startupRouted) {
                 container.sessionRestored.await()
-                selected = if (container.nativeNetease != null || container.accountRepository.state.value.account != null) HOME_TAB else ME_TAB
+                selected = HOME_TAB
                 startupRouted = true
             }
         }
         var songMenu by remember { mutableStateOf<SongMenu?>(null) }
         var downloadSongJson by rememberSaveable { mutableStateOf<String?>(null) }
-        var roomPending by remember { mutableStateOf(setOf<Long>()) }
         var miniHeight by remember { mutableStateOf(72.dp) }
         var miniBounds by remember { mutableStateOf<Rect?>(null) }
         var miniCoordinates by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
@@ -329,15 +314,13 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
 
         val density = LocalDensity.current
         val rootPage = sceneStack.last() == ROOT.toString() && !searchPresented
-        val hideDockForChat = rootPage && selected == DISCOVER_TAB && discoverPager.targetPage == 3
         val imeInsets = WindowInsets.ime
         val keyboardOpen by remember(imeInsets, density) { derivedStateOf { imeInsets.getBottom(density) > 0 } }
         val miniRetainedAvailable = currentSong != null || playerState.mode == PlayerMode.ROOM
         val miniAvailable = !keyboardOpen && miniRetainedAvailable
-        val showMini = miniAvailable && !hideDockForChat && !playerPresented && sceneStack.last() !in setOf("lib/video", "appearance-font") &&
+        val showMini = miniAvailable && !playerPresented && sceneStack.last() !in setOf("lib/video", "appearance-font") &&
             !(settings.playlistRecordShelf && supportsPlaylistOverlay(sceneStack.last()))
         PreloadMusicCovers(listOf(currentSong?.cover.orEmpty()), 800)
-        LaunchedEffect(sessionRevision) { songMenu = null; roomPending = emptySet() }
         var roomDialogOpen by remember { mutableStateOf(false) }
         var playerDialogOpen by remember { mutableStateOf(false) }
         var playerEffectsOpen by rememberSaveable { mutableStateOf(false) }
@@ -345,8 +328,8 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         val pageNavigation=remember {PageContainerNavigation()}
         val pageSceneStrategy=remember(pageNavigation) {PageContainerSceneStrategy(pageNavigation,
             setOf(ROOT.toString(),SETTINGS.toString(),APPEARANCE.toString(),NETWORK.toString(),STORAGE.toString(),ABOUT.toString(),
-                "user/security","user/binding","user/netease-tasks","user/playlist-import","user/decorations",
-                EQUALIZER.toString(),"appearance-font","playback-settings","audio-output","desktop-lyrics","sound-equalizer","navidrome","emby",SupportConfig.route,SupportConfig.donationRoute)+
+                "user/binding","user/listening",
+                EQUALIZER.toString(),"appearance-font","playback-settings","audio-output","desktop-lyrics","sound-equalizer","navidrome",SupportConfig.route)+
                 LegalDocument.entries.map {it.route().toString()})}
         SideEffect {pageNavigation.onClosed={route->
             if(backStack.lastOrNull()==route)backStack=backStack.dropLast(1)
@@ -484,30 +467,11 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC) {
                 libraryVm.message.value = "一起听房间当前支持网易云歌曲"; return
             }
-            if (song.musicSource in setOf(io.github.currencortex.music.data.song.MusicSource.NAVIDROME, io.github.currencortex.music.data.song.MusicSource.EMBY, io.github.currencortex.music.data.song.MusicSource.LOCAL)) { libraryVm.message.value = "本地或私有曲库歌曲不能提交到一起听房间"; return }
+            if (song.musicSource in setOf(io.github.currencortex.music.data.song.MusicSource.NAVIDROME, io.github.currencortex.music.data.song.MusicSource.LOCAL)) { libraryVm.message.value = "本地或私有曲库歌曲不能提交到一起听房间"; return }
             if (nativeTogether.active) { container.listenTogether.request(song); return }
-            if (!container.roomSession.active || song.id in roomPending) return
-            val revision = container.accountRepository.sessionRevision.value
-            val roomId = roomLive.detail?.room?.id
-            roomPending = roomPending + song.id
-            scope.launch {
-                try {
-                    val result = container.roomSession.submit(song)
-                    if (revision == container.accountRepository.sessionRevision.value && roomId == container.roomSession.state.value.detail?.room?.id) {
-                        libraryVm.message.value = when (result) {
-                            is AppResult.Success -> "已提交点歌：${song.name}，可返回房间查看队列"
-                            is AppResult.Failure -> "点歌失败：${result.kind.message}"
-                        }
-                    }
-                } finally { if (revision == container.accountRepository.sessionRevision.value) roomPending = roomPending - song.id }
-            }
-        }
-        LaunchedEffect(roomLive.detail?.room?.id, playerState.mode, nativeTogether.active) {
-            if (backStack.last() == "room/search" && !container.roomSession.active && !nativeTogether.active) navigateBack()
         }
         val roomRequest = when {
             nativeTogether.active -> RoomSongRequest(::requestSong) { nativeTogether.busy }
-            container.roomSession.active && roomLive.detail != null -> RoomSongRequest(::requestSong) { it in roomPending }
             else -> null
         }
         val playerDrag = remember(playerExpansion, scope) { PlayerSheetDragController(playerExpansion, scope) }
@@ -519,18 +483,14 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             playerDrag.flingThreshold = with(density) { 600.dp.toPx() }
         }
         val predictiveBack = settings.predictiveBack && Build.VERSION.SDK_INT >= 34
-        val labels = listOf("首页", "发现", "我的", "设置")
-        val icons = listOf(Icons.Default.Home, Icons.Default.Star, Icons.Default.Person, Icons.Default.Settings)
+        val labels = listOf("首页", "我的", "设置")
+        val icons = listOf(Icons.Default.Home, Icons.Default.Person, Icons.Default.Settings)
         fun selectTab(index: Int) {
             if (selected == index) return
-            when {
-                selected == HOME_TAB && index == ME_TAB && account.account != null -> avatarFlight.beginFromHome()
-                selected == ME_TAB && index == HOME_TAB && account.account != null -> avatarFlight.beginFromProfile()
-                else -> avatarFlight.cancel()
-            }
+            avatarFlight.cancel()
             selected = index
         }
-        androidx.activity.compose.BackHandler(enabled = backStack.size == 1 && (selected == SETTINGS_TAB || (selected == ME_TAB && account.account != null)) && !announcementVisible) {
+        androidx.activity.compose.BackHandler(enabled = backStack.size == 1 && (selected == SETTINGS_TAB || selected == ME_TAB) && !announcementVisible) {
             selectTab(HOME_TAB)
         }
 
@@ -550,20 +510,18 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             .onGloballyPositioned { navigationBounds = it.boundsInRoot() }) {
         val wideLayout = maxWidth >= 700.dp
         val rootWide = rootPage && wideLayout
-        val showRootNavigation = rootPage && !playerPresented && (!hideDockForChat || wideLayout)
-        val embyDock = embyNavigation.takeIf { backStack.lastOrNull { it != PLAYER.toString() } == "emby" }
-        val hasEmbyDock = embyDock != null
-        val dockSelected = embyDock?.selected ?: selected
-        val dockLabels = if (hasEmbyDock) io.github.currencortex.music.feature.emby.EmbyNavigation.labels else labels
-        val dockIcons = if (hasEmbyDock) io.github.currencortex.music.feature.emby.EmbyNavigation.icons else icons
-        val dockSelect: (Int) -> Unit = embyDock?.onSelect ?: ::selectTab
-        val dockPage = if (hasEmbyDock) 100 + dockSelected else selected * 4 + if (selected == DISCOVER_TAB) discoverPager.targetPage else 0
+        val showRootNavigation = rootPage && !playerPresented
+        val dockSelected = selected
+        val dockLabels = labels
+        val dockIcons = icons
+        val dockSelect: (Int) -> Unit = ::selectTab
+        val dockPage = selected
         val dockScroll = rememberRootDockScrollBehavior(dockPage, miniRetainedAvailable,
-            enabled = (rootPage || hasEmbyDock) && !hideDockForChat && !playerPresented && !miniQueueOpen && miniAvailable && !wideLayout)
+            enabled = rootPage && !playerPresented && !miniQueueOpen && miniAvailable && !wideLayout)
         val dockCollapsed = miniRetainedAvailable && !wideLayout && dockScroll.collapsed
         // Reserve page space once. Animate only the overlay's GPU translation, never the page height.
         val miniRoot = backStack.lastOrNull { it != PLAYER.toString() } == ROOT.toString()
-        val navigationSpace = if ((miniRoot && !wideLayout || hasEmbyDock) && !keyboardOpen && !dockCollapsed) 92.dp else 0.dp
+        val navigationSpace = if (miniRoot && !wideLayout && !keyboardOpen && !dockCollapsed) 92.dp else 0.dp
         val miniLift = animateDpAsState(navigationSpace, tween(if (settings.floatingBar) 180 else 320), label = "mini player lift")
         // A scene's insets must not depend on which route is currently on top. Predictive back
         // renders both scenes before committing; changing the shared viewport makes them jump.
@@ -632,7 +590,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                                         onProfile = { _, _ -> selectTab(ME_TAB) },
                                         navigate = ::navigateLibrary,
                                         play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } },
-                                        profile = myProfile.profile?.user,
                                         onSearchBounds = { searchBounds = it },
                                         hideSearch = searchPresented,
                                         searchQuery = searchQuery,
@@ -646,26 +603,14 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                                         { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, root = true)
                                 else MusicHomeScreen(libraryVm, onSearch = { navigateTo(SEARCH) }, onProfile = { _, _ -> selectTab(ME_TAB) },
                                     navigate = ::navigateLibrary, play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } },
-                                    profile = myProfile.profile?.user, onSearchBounds = { searchBounds = it }, hideSearch = searchPresented,
+                                    onSearchBounds = { searchBounds = it }, hideSearch = searchPresented,
                                     searchQuery = searchQuery, onSearchSubmit = {
                                         navigateTo(SEARCH)
                                         val query = searchVm.state.value.query
                                         if (query.isNotBlank()) { searchVm.search(query); searchFocus = false }
                                     })
-                                DISCOVER_TAB -> CompositionLocalProvider(
-                                    LocalMusicBottomInset provides if (discoverPager.targetPage == 3) 0.dp else scrollBottom,
-                                    LocalMusicComposerBottomInset provides if (discoverPager.targetPage == 3) 0.dp else composerBottom) {
-                                    if (qqSelected) DiscoverScreen(discoverVm, discoverPager, ::navigateLibrary,
-                                        musicPage = {
-                                            io.github.currencortex.music.feature.qqmusic.QqMusicDiscoverMusicPage(container, ::navigateLibrary)
-                                        })
-                                    else DiscoverScreen(discoverVm, discoverPager, ::navigateLibrary)
-                                }
-                                ME_TAB -> if (qqSelected)
-                                    MeScreen(profileVm, authVm, ::navigateLibrary, { selectTab(SETTINGS_TAB) },
-                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } },
-                                        platform = io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC)
-                                else MeScreen(profileVm, authVm, ::navigateLibrary, { selectTab(SETTINGS_TAB) },
+                                ME_TAB -> io.github.currencortex.music.feature.provider.ProviderAccountScreen(container,
+                                    navigate = ::navigateLibrary, onSettings = { selectTab(SETTINGS_TAB) },
                                     play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
                                 SETTINGS_TAB -> SettingsScreen(
                                     onAppearance = { navigateTo(APPEARANCE) }, onNetwork = { navigateTo(NETWORK) },
@@ -713,22 +658,11 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                     }
                 }
                 entry(NETWORK.toString()) {
-                    MusicSettingsScreen(musicSettingsVm, onNavidrome = { navigateLibrary("navidrome") },
-                        onEmby = { navigateLibrary("emby") }, onLogin = { authVm.begin(); navigateLibrary("user/login") })
+                    MusicSettingsScreen(musicSettingsVm, onNavidrome = { navigateLibrary("navidrome") })
                 }
                 entry("playback-settings") { io.github.currencortex.music.feature.settings.PlaybackSettingsScreen(musicSettingsVm) }
                 entry("audio-output") { io.github.currencortex.music.feature.settings.AudioOutputScreen(container) }
                 entry("desktop-lyrics") { io.github.currencortex.music.feature.lyrics.desktop.DesktopLyricsSettingsScreen(container) }
-                entry("emby") {
-                    val vm: io.github.currencortex.music.feature.emby.EmbyViewModel = viewModel(factory = viewModelFactory {
-                        io.github.currencortex.music.feature.emby.EmbyViewModel(container)
-                    })
-                    Box(Modifier.fillMaxSize().nestedScroll(dockScroll)) {
-                        io.github.currencortex.music.feature.emby.EmbyScreen(vm,
-                            { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, ::navigateBack,
-                            onNavigationChange = { embyNavigation = it })
-                    }
-                }
                 entry("navidrome") {
                     io.github.currencortex.music.feature.navidrome.NavidromeScreen(navidromeVm, libraryVm, ::navigateLibrary,
                         { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, onBack = ::navigateBack)
@@ -753,14 +687,9 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                         SearchScreen(searchVm, container.playerController, actions = { LibrarySongActions(libraryVm, it, ::navigateLibrary) },
                             navigate = ::navigateLibrary,
-                            roomName = if (nativeTogether.active) "网易云双人一起听" else roomLive.detail?.room?.name.orEmpty(),
+                            roomName = "网易云双人一起听",
                             onBack = ::navigateBack, onPlay = ::requestSong)
                     }
-                }
-                entry("room/list") {
-                    val vm: RoomViewModel = viewModel(factory = viewModelFactory { RoomViewModel(container) })
-                    RoomScreen(vm, ::navigateBack, { navigateLibrary("room/search") }, { navigateTo(PLAYER) }, { roomDialogOpen = it },
-                        onBinding = { navigateLibrary("user/binding") })
                 }
                 entry("room/invitation") {
                     key(listenInvitationId) {
@@ -793,21 +722,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                         onOpenMember = { member, group -> memberFocus = MemberFocus(member, group) },
                         onSupport = { navigateLibrary(SupportConfig.route) })
                 }
-                entry(SupportConfig.route) { SupportScreen(onBack = ::navigateBack,
-                    onOfficialDonation = { navigateLibrary(SupportConfig.donationRoute) }) }
-                entry(SupportConfig.donationRoute) {
-                    val vm: io.github.currencortex.music.feature.support.DonationViewModel = viewModel(factory = viewModelFactory {
-                        io.github.currencortex.music.feature.support.DonationViewModel(
-                            io.github.currencortex.music.data.support.DonationRepository(container.apiClient),
-                            kotlinx.coroutines.flow.flow {
-                                container.sessionRestored.await()
-                                emitAll(kotlinx.coroutines.flow.combine(container.accountRepository.sessionRevision,
-                                    container.musicSettings.state.map { it.server }) { _, _ -> container.projectSession() })
-                            })
-                    })
-                    io.github.currencortex.music.feature.support.OfficialDonationScreen(vm, ::navigateBack,
-                        onLogin = { authVm.begin(); navigateLibrary("user/login") })
-                }
+                entry(SupportConfig.route) { SupportScreen(onBack = ::navigateBack) }
                 LegalDocument.entries.forEach { document ->
                     entry(document.route().toString()) {
                         Box(Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -820,91 +735,31 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                     entry(route) {
                         Box(Modifier.fillMaxSize()) {
                             when {
-                                route == "user/admin" -> {
-                                    val vm: io.github.currencortex.music.feature.admin.AdminViewModel = viewModel(key = route,
-                                        factory = viewModelFactory { io.github.currencortex.music.feature.admin.AdminViewModel(container) })
-                                    io.github.currencortex.music.feature.admin.AdminScreen(vm, ::navigateBack)
-                                }
-                                route == "user/announcements" -> {
-                                    val vm: io.github.currencortex.music.feature.announcement.AnnouncementArchiveViewModel =
-                                        viewModel(key = route, factory = viewModelFactory {
-                                            io.github.currencortex.music.feature.announcement.AnnouncementArchiveViewModel(
-                                                container.announcements, container.musicSettings.state.map { it.server })
-                                        })
-                                    io.github.currencortex.music.feature.announcement.AnnouncementArchiveScreen(vm, ::navigateBack)
-                                }
-                                route == "user/security" -> AccountSecurityScreen(profileVm, authVm, add = {
-                                    authVm.begin(); navigateLibrary("user/login")
-                                }, onBack = ::navigateBack)
-                                route == "user/login" -> LoginScreen(authVm, addingAccount = true, onDone = ::navigateBack, onBack = ::navigateBack)
-                                route == "user/levels" -> {
-                                    val vm: LevelsViewModel = viewModel(key = route, factory = viewModelFactory {
-                                        LevelsViewModel(io.github.currencortex.music.data.profile.LevelsRepository(container.apiClient),
-                                            kotlinx.coroutines.flow.combine(container.accountRepository.sessionRevision,
-                                                container.musicSettings.state.map { it.server }) { _, _ ->
-                                                io.github.currencortex.music.core.network.RequestSession(container.accountRepository.server,
-                                                    container.accountRepository.token)
-                                            }) { owner, progress ->
-                                            container.authRepository.updateProgress(owner, progress.level, progress.points)
-                                        }
-                                    })
-                                    LevelsScreen(vm, ::navigateBack)
-                                }
                                 route == "user/listening" -> io.github.currencortex.music.feature.listening.ListeningScreen(
                                     container, ::navigateBack, onLogin = { navigateLibrary("user/binding") },
                                     onNavigate = ::navigateLibrary, onPlay = { song -> playWithPermission { container.playerController.playSong(song) } },
                                     onPlayList = { songs,index -> playWithPermission { container.playerController.playList(songs,index) } })
-                                route == "user/decorations" -> {
-                                    val vm: DecorationViewModel = viewModel(key = route, factory = viewModelFactory { DecorationViewModel(container) })
-                                    DecorationScreen(vm, ::navigateBack)
-                                }
                                 route == "user/binding" -> {
                                     val vm: BindingViewModel = viewModel(key = route, factory = viewModelFactory { BindingViewModel(container) })
-                                    BindingScreen(vm, ::navigateBack) { authVm.begin(); navigateLibrary("user/login") }
-                                }
-                                route == "user/netease-tasks" -> {
-                                    val vm: io.github.currencortex.music.feature.tasks.NeteaseTasksViewModel = viewModel(key = route,
-                                        factory = viewModelFactory {
-                                            io.github.currencortex.music.feature.tasks.NeteaseTasksViewModel(container.neteaseTasks,
-                                                container.neteaseTaskAutomation) { container.errorNotices.show(it) }
-                                        })
-                                    io.github.currencortex.music.feature.tasks.NeteaseTasksScreen(vm, ::navigateBack,
-                                        onLogin = { navigateLibrary("user/binding") }, onNavigate = ::navigateLibrary)
-                                }
-                                route == "user/playlist-import" -> {
-                                    val vm: io.github.currencortex.music.feature.playlistimport.PlaylistImportViewModel = viewModel(key = route,
-                                        factory = viewModelFactory {
-                                            io.github.currencortex.music.feature.playlistimport.PlaylistImportViewModel(container.playlistImporter) {
-                                                container.neteaseLibrary.invalidate()
-                                            }
-                                        })
-                                    io.github.currencortex.music.feature.playlistimport.PlaylistImportScreen(vm, ::navigateBack,
-                                        onLogin = { navigateLibrary("user/binding") },
-                                        onPlaylist = { id -> container.neteaseLibrary.invalidate(); navigateLibrary("lib/ncmplaylist/$id") })
-                                }
-                                route.startsWith("user/profile/") -> {
-                                    val id = route.substringAfterLast('/').toLongOrNull() ?: 0L
-                                    val vm: ProfileViewModel = viewModel(key = route,
-                                        factory = viewModelFactory { ProfileViewModel(container, id) })
-                                    ProfileScreen(vm, ::navigateLibrary,
-                                        { songs, index -> playWithPermission { container.playerController.playList(songs, index) } },
-                                        onBack = ::navigateBack, platform = lyricsFontSettings.musicPlatform)
+                                    BindingScreen(vm, ::navigateBack)
                                 }
                             }
                         }
                     }
                 }
-                backStack.filter { it.startsWith("qq/") }.distinct().forEach { route ->
+                backStack.filter { it.startsWith("kugou/") }.distinct().forEach { route ->
                     entry(route) {
                         when (route) {
-                            "qq/community" -> DiscoverScreen(discoverVm, discoverPager, ::navigateLibrary,
-                                musicPage = {
-                                    io.github.currencortex.music.feature.qqmusic.QqMusicDiscoverMusicPage(container, ::navigateLibrary)
-                                })
-                            "qq/community-profile" -> MeScreen(profileVm, authVm, ::navigateLibrary, { selectTab(SETTINGS_TAB) },
-                                play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } },
-                                platform = io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC)
-                            else if (route.startsWith("qq/playlist/") || route in setOf("qq/daily", "qq/foryou", "qq/likes", "qq/recent")) -> {
+                            "kugou/account" -> io.github.currencortex.music.feature.kugou.KugouAccountScreen(container, ::navigateBack)
+                            else -> io.github.currencortex.music.feature.kugou.KugouSearchScreen(container, ::navigateBack,
+                                onAccount = { navigateLibrary("kugou/account") })
+                        }
+                    }
+                }
+                backStack.filter { it.startsWith("qq/") }.distinct().forEach { route ->
+                    entry(route) {
+                        when {
+                            route.startsWith("qq/playlist/") || route in setOf("qq/daily", "qq/foryou", "qq/likes", "qq/recent") -> {
                                 val detailVm: LibraryDetailViewModel = viewModel(key = route,
                                     factory = viewModelFactory { LibraryDetailViewModel(container, route) })
                                 LibraryDetailScreen(detailVm, libraryVm, ::navigateBack, ::navigateLibrary,
@@ -960,7 +815,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                             route == "lib/video" -> if (currentSong?.video == true) io.github.currencortex.music.feature.mv.MvPlayerScreen(container, ::navigateBack,
                                 onDialogActive = { playerDialogOpen = it })
                                 else PlayerScreen(playerVm, ::navigateBack, { playWithPermission { container.playerController.toggle() } },
-                                    onLike = if (currentSong?.emby == null) ({ currentSong?.let(libraryVm::choosePlaylist); Unit }) else null,
+                                    onLike = { currentSong?.let(libraryVm::choosePlaylist) },
                                     onAiNavigate = ::navigateLibrary)
                             route.startsWith("lib/browse/") -> {
                                 val parts = route.split('/')
@@ -990,14 +845,14 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         val page: @Composable () -> Unit = {
             CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides pageBackOwner) { pageContent() }
         }
-        val dockVisible by remember(keyboardOpen, sceneStack, settings.playlistRecordShelf, hideDockForChat) { derivedStateOf {
-            !hideDockForChat && sceneStack.last() !in setOf("lib/video", "appearance-font") && playerExpansion.value < .9999f &&
+        val dockVisible by remember(keyboardOpen, sceneStack, settings.playlistRecordShelf) { derivedStateOf {
+            sceneStack.last() !in setOf("lib/video", "appearance-font") && playerExpansion.value < .9999f &&
                 !(settings.playlistRecordShelf && supportsPlaylistOverlay(sceneStack.last()))
         } }
         val miniOverlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
         KeyboardDockOverlay(keyboardOpen) {
         val unifiedDock = settings.floatingBar && !wideLayout
-        val standardNavigation = !unifiedDock && !keyboardOpen && (showRootNavigation && !rootWide || hasEmbyDock && !playerPresented)
+        val standardNavigation = !unifiedDock && !keyboardOpen && (showRootNavigation && !rootWide)
         // When the tabs are absent or collapsed, the mini is the bottommost visible surface.
         val glowOnStandardBar = standardNavigation && !dockCollapsed
         val glow: (@Composable (Modifier) -> Unit)? = if (settings.navigationGlow && currentSong != null) {
@@ -1016,7 +871,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                 .onSizeChanged { miniHeight = with(density) { it.height.toDp() } }.padding(horizontal = 12.dp, vertical = 8.dp),
             onNext = { container.playerController.next(container.playerController.state.value.showPause) },
             onPrevious = { container.playerController.previous(container.playerController.state.value.showPause) },
-            onQueue = { if (playerState.mode == PlayerMode.ROOM && !container.listenTogether.state.value.active) navigateLibrary("room/list") else {
+            onQueue = { if (playerState.mode == PlayerMode.ROOM && !container.listenTogether.state.value.active) navigateLibrary("room/search") else {
                 miniQueueTransition.capture(currentSong, miniArtworkOrigin?.invoke(), artworkTransition.text)
                 miniQueueOpen = true
             } },
@@ -1027,9 +882,9 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         }
         if (unifiedDock) {
             val glassNavigation = LocalMusicDockNavigation.current
-            UnifiedMusicDock(expanded = (miniRoot || hasEmbyDock) && !keyboardOpen && !dockCollapsed,
+            UnifiedMusicDock(expanded = miniRoot && !keyboardOpen && !dockCollapsed,
                 visible = dockVisible,
-                miniPresent = miniRetainedAvailable, navigationInteractive = (showRootNavigation || hasEmbyDock) && !keyboardOpen && !dockCollapsed,
+                miniPresent = miniRetainedAvailable, navigationInteractive = showRootNavigation && !keyboardOpen && !dockCollapsed,
                 modifier = Modifier.align(Alignment.BottomCenter)
                     .then(if (playerPresented || miniQueueOpen) Modifier.clearAndSetSemantics {} else Modifier)
                     .graphicsLayer { alpha = 1f - playerSheetSurfaceAlpha(playerExpansion.value) },
@@ -1066,7 +921,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             origin = playerOrigin, viewport = navigationBounds, artwork = artworkTransition,
             artworkUrl = currentSong?.cover.orEmpty(), predictiveBack = predictiveBack,
             backEnabled = !playerEffectsPresented && !showLogs && pendingPlay == null && !updateDialogVisible && !announcementVisible &&
-                !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null && profileDialog == null && profileMessage == null &&
+                !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null &&
                 !roomDialogOpen && songMenu == null && !playerDialogOpen && !miniQueueOpen,
             // Only the tap target that reverses a closing sheet needs the moving dock bounds.
             miniOpenBounds = if (miniAvailable && playerSheetMotion == PlayerSheetMotion.CLOSE) miniOpenBounds else null,
@@ -1076,9 +931,9 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             playerSavedState.SaveableStateProvider(PLAYER) {
                 PlayerScreen(playerVm, ::navigateBack, { playWithPermission { container.playerController.toggle() } },
                     actions = { song -> LibrarySongActions(libraryVm, song, ::navigateLibrary) },
-                    onRoom = { navigateLibrary("room/list") },
+                    onRoom = { navigateLibrary("room/invitation") },
                     onDialogActive = { playerDialogOpen = it }, onNetwork = { navigateTo(NETWORK) },
-                    onLike = if (currentSong?.emby == null) ({ currentSong?.let(libraryVm::choosePlaylist); Unit }) else null, onEqualizer = { playerEffectsOpen = true },
+                    onLike = { currentSong?.let(libraryVm::choosePlaylist) }, onEqualizer = { playerEffectsOpen = true },
                     onAiNavigate = ::navigateLibrary, roamingRequest = roamingRequest,
                     onRoamingRequestConsumed = { roamingRequest = 0 })
             }
@@ -1122,7 +977,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         NavigationBackHandler(
             state = rememberNavigationEventState(NavigationEventInfo.None),
             isBackEnabled = backStack.size > 1 && !playerPresented && !searchCoversScene && !predictiveBack && !showLogs &&
-                pendingPlay == null && !updateDialogVisible && updatePrompt == null && !announcementVisible && !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null && profileDialog == null && profileMessage == null && !roomDialogOpen && songMenu == null && downloadSongJson == null && !playerDialogOpen && !miniQueueOpen,
+                pendingPlay == null && !updateDialogVisible && updatePrompt == null && !announcementVisible && !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null && !roomDialogOpen && songMenu == null && downloadSongJson == null && !playerDialogOpen && !miniQueueOpen,
             onBackCompleted = ::navigateBack,
         )
         // With predictive back off the page dispatcher is disabled, so the ribbon/shelf
@@ -1155,10 +1010,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                 updateTransitionVisible = presented
             }, versionPreview = updatePreviewVersion, sourceCheck = container.updateSourceCheck)
         LibraryDialogs(libraryVm)
-        ProfileDialogs(profileVm, authVm)
-        if (profileMessage != null) MusicDialog("账号操作", onDismiss = { profileVm.message.value = null }) {
-            Text(profileMessage.orEmpty()); MusicDialogButton("关闭", onClick = { profileVm.message.value = null })
-        }
         LaunchedEffect(playerState.error) {
             playerState.error?.let { message ->
                 container.errorNotices.show(message)
@@ -1189,17 +1040,17 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         AvatarFlightOverlay(avatarFlight)
         io.github.currencortex.music.feature.lyrics.desktop.SoundEffectIslandFallback(container)
         val landingOnHome = selected == HOME_TAB && backStack.last() == ROOT.toString()
-        val pageReady = launchReady && startupRouted && (!account.loading || container.nativeNetease != null) &&
+        val pageReady = launchReady && startupRouted &&
             (!landingOnHome || (libraryHome.loaded && !libraryHome.loading))
         if (!launchFinished) {
             val finish = { launchBrand.active = false; launchFinished = true }
             when (launchStyle) {
                 io.github.currencortex.music.data.settings.LaunchStyle.SIGNATURE -> {
-                    if (launchReady) SignatureLaunchOverlay(launchUsername(account.account), launchWindowReady, onFinished = finish)
+                    if (launchReady) SignatureLaunchOverlay(launchUsername(), launchWindowReady, onFinished = finish)
                     else LaunchPreparationOverlay(dark = true)
                 }
                 io.github.currencortex.music.data.settings.LaunchStyle.HALO -> HaloLaunchOverlay(
-                    launchUsername(account.account), pageReady, launchWindowReady, onFinished = finish)
+                    launchUsername(), pageReady, launchWindowReady, onFinished = finish)
                 io.github.currencortex.music.data.settings.LaunchStyle.CLASSIC -> LaunchBrandOverlay(launchBrand, pageReady,
                     canLandOnHome = landingOnHome, windowReady = launchWindowReady, enableBlur = settings.blur, onFinished = finish)
                 io.github.currencortex.music.data.settings.LaunchStyle.NONE -> Unit
@@ -1211,9 +1062,9 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             androidx.activity.compose.BackHandler { launchPreview = null }
             when (style) {
                 io.github.currencortex.music.data.settings.LaunchStyle.SIGNATURE -> SignatureLaunchOverlay(
-                    launchUsername(account.account), preview = true, onFinished = { launchPreview = null })
+                    launchUsername(), preview = true, onFinished = { launchPreview = null })
                 io.github.currencortex.music.data.settings.LaunchStyle.HALO -> HaloLaunchOverlay(
-                    launchUsername(account.account), ready = true, preview = true, onFinished = { launchPreview = null })
+                    launchUsername(), ready = true, preview = true, onFinished = { launchPreview = null })
                 io.github.currencortex.music.data.settings.LaunchStyle.CLASSIC -> LaunchBrandOverlay(previewBrand,
                     ready = true, canLandOnHome = false, enableBlur = settings.blur, onFinished = { launchPreview = null })
                 io.github.currencortex.music.data.settings.LaunchStyle.NONE -> Unit

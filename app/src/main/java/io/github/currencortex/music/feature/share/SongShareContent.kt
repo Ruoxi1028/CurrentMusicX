@@ -13,7 +13,7 @@ internal data class SongShareContent(val title: String, val artists: String, val
         fun from(song: Song): SongShareContent {
             fun clean(value: String) = value.replace(Regex("[\\r\\n\\t]+"), " ").trim()
             // IDs from other sources and private Navidrome credentials are never public song URLs.
-            val id = if (!song.video && song.musicSource == MusicSource.NETEASE && song.navidrome == null && song.emby == null)
+            val id = if (!song.video && song.musicSource == MusicSource.NETEASE && song.navidrome == null)
                 (song.externalIds.neteaseId?.toLongOrNull() ?: song.id).takeIf { it > 0 } else null
             return SongShareContent(clean(song.name).ifBlank { "未命名歌曲" },
                 clean(song.artists).ifBlank { "未知歌手" },

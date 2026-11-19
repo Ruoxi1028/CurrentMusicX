@@ -203,7 +203,7 @@ internal class CurrentMusicPreviewRenderer(font: Typeface?, private val fontScal
             }
             text("音乐服务", 32f, 676f, 17f, muted, true)
             panel(16f, 696f, 328f, 186f, radius = 20f)
-            listOf("网易云账号" to "绑定账号、同步歌单", "导入歌单" to "链接、文字、图片与本地歌曲",
+            listOf("网易云账号" to "扫码登录、同步歌单", "酷狗音乐" to "搜索并播放酷狗曲库",
                 "Navidrome 曲库" to "自己的音乐服务器").forEachIndexed { i, item -> row(item.first, item.second, 696f + i * 62) }
             }
         }
@@ -218,7 +218,7 @@ internal class CurrentMusicPreviewRenderer(font: Typeface?, private val fontScal
             text("音乐", 32f, 381f, 17f, muted, true)
             panel(16f, 400f, 328f, 248f, radius = 20f)
             row("播放", "音质、歌曲衔接与预加载", 400f, "headphones")
-            row("音源与网络", "音乐音源、歌词来源与服务器", 462f, "storage")
+            row("音源与网络", "歌词来源、服务器与自建曲库", 462f, "storage")
             row("音效", "智能调音、音效与均衡器", 524f, "headphones")
             row("音频输出", "输出采样率、设备与能力信息", 586f, "device")
         }

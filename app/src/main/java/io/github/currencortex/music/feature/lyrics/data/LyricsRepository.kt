@@ -55,8 +55,7 @@ class LyricsRepository(private val ttml: LyricsProvider, private val fallback: L
         val selected = selection?.invoke()
         val qqMusic = song.musicSource == io.github.currencortex.music.data.song.MusicSource.QQ_MUSIC
         val selectedOrigin = if (qqMusic) LyricsOrigin("QQ 音乐", "qq_music", song.externalIds.qqMusicId.orEmpty())
-            else if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY)
-            LyricsOrigin("Emby", "emby") else if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME)
+            else if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME)
             LyricsOrigin("Navidrome", "navidrome") else selected?.origin
         val memoryKey = (selected?.identity.orEmpty() + listOf(selected?.automatic == true, SongLyricsStore.identity(song))) to keys
         fun remember(document: LyricsDocument, origin: LyricsOrigin? = selectedOrigin,

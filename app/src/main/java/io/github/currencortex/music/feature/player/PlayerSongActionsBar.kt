@@ -16,7 +16,6 @@ import io.github.currencortex.music.data.song.NeteaseSongActionsRepository
     val queue by vm.queue.collectAsStateWithLifecycle()
     val actions by vm.actions.collectAsStateWithLifecycle()
     val likePreview by vm.likePreview.collectAsStateWithLifecycle()
-    val statuses by vm.libraryStatuses.collectAsStateWithLifecycle()
     val platformLikes by vm.usesNeteaseLibrary.collectAsStateWithLifecycle()
     val sleep by vm.sleepTimer.state.collectAsStateWithLifecycle()
     val id = NeteaseSongActionsRepository.songId(queue.current)
@@ -29,12 +28,12 @@ import io.github.currencortex.music.data.song.NeteaseSongActionsRepository
         val middleSlot = if (onOptions != null) Modifier.weight(1f) else Modifier
         val liked = likePreview?.takeIf { it.song.id == queue.current?.id && it.song.musicSource == queue.current?.musicSource &&
             it.song.privateIdentity == queue.current?.privateIdentity }?.liked
-            ?: if (platformLikes || navidrome || qqMusic || netease) current?.liked == true else statuses[queue.current?.id]?.liked == true
+            ?: current?.liked == true
         PlayerIconButton(PlayerIcon.LIKE, if (liked) "取消喜欢" else "喜欢", vm::togglePrimaryLike,
             Modifier.testTag("player_like"), selected = liked, count = current?.likeCount,
             countLabel = current?.likeCountLabel,
             showCount = true, enabled = queue.current?.video == false && queue.current?.musicSource != io.github.currencortex.music.data.song.MusicSource.LOCAL &&
-                ((!qqMusic && !netease && queue.current?.musicSource != io.github.currencortex.music.data.song.MusicSource.EMBY) ||
+                ((!qqMusic && !netease) ||
                     current?.liked != null), onLongClick = onLike)
         Box(middleSlot, contentAlignment = Alignment.Center) {
             PlayerIconButton(PlayerIcon.COMMENT, "评论区", onComments, Modifier.testTag("player_comments"),

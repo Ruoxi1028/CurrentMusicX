@@ -13,9 +13,8 @@ object AppMetadata {
     const val LICENSE = "GPL-3.0-only"
 
     const val PROJECT_URL = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO"
-    // Native releases live in a dedicated repository so they never mix with the
-    // web client's releases published on backrooms-yrc/CurrentMusic.
-    const val RELEASES_OWNER = "bileizhen"
+    // Native releases are checked against the maintained fork repository.
+    const val RELEASES_OWNER = "Ruoxi1028"
     const val RELEASES_REPO = "CurrentMusicX"
     const val RELEASES_PROJECT_URL = "https://github.com/$RELEASES_OWNER/$RELEASES_REPO"
     const val RELEASES_URL = "$RELEASES_PROJECT_URL/releases"

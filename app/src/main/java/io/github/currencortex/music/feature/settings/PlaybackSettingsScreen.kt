@@ -17,7 +17,7 @@ import io.github.currencortex.music.data.settings.ListeningSource
 import io.github.currencortex.music.data.settings.MusicPlatform
 import io.github.currencortex.music.data.settings.MusicTransitionMode
 import io.github.currencortex.music.feature.player.AudioQualitySheet
-import io.github.currencortex.music.feature.player.qqAudioQualities
+import io.github.currencortex.music.feature.player.qqNativeQualities
 import io.github.currencortex.music.feature.player.qualityLabel
 import io.github.currencortex.music.ui.component.MusicDestinationRow
 import io.github.currencortex.music.ui.component.LyricsStyleSelector
@@ -104,12 +104,8 @@ import kotlin.math.roundToInt
         } }
     }
     if (qualityOpen) {
-        val available = if (isQq) {
-            val provider by vm.audioProvider.collectAsStateWithLifecycle()
-            val sources by vm.lxSources.collectAsStateWithLifecycle()
-            qqAudioQualities(provider, sources)
-        } else null
-        AudioQualitySheet(quality, vm::quality, { qualityOpen = false }, title = "默认播放音质", isQq = isQq, available = available)
+        AudioQualitySheet(quality, vm::quality, { qualityOpen = false }, title = "默认播放音质", isQq = isQq,
+            available = if (isQq) qqNativeQualities else null)
     }
     if (appleLyricsOpen) MusicDialog("Apple Music 歌词", { appleLyricsOpen = false }) {
         Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())

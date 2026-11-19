@@ -12,7 +12,7 @@ import io.github.currencortex.music.AppContainer
 import io.github.currencortex.music.core.media.ListeningHistoryReport
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
-import io.github.currencortex.music.data.profile.listeningDuration
+import io.github.currencortex.music.core.media.listeningDuration
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import java.time.LocalDate

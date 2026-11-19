@@ -75,21 +75,14 @@ fun catalogRoute(album: Boolean, query: String = "") = "lib/browse/${if (album) 
             add(GlassMenuItem("qq_comments_$mid", "QQ 音乐评论", onClick = { navigate("qq/comments/$mid") }))
         }
     }
-    if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.EMBY) {
+    if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME) {
         return listOf(GlassMenuItem("song_like_${song.id}", "喜欢 / 取消喜欢", onClick = { vm.togglePrimaryLike(song) }),
-            GlassMenuItem("song_emby", "打开 Emby 曲库", onClick = { navigate("emby") }))
+            GlassMenuItem("song_navidrome", "打开 Navidrome 曲库", onClick = { navigate("navidrome") }))
     }
-    val statuses by vm.statuses.collectAsStateWithLifecycle()
-    val status = statuses[song.id] ?: SongStatus()
-    LaunchedEffect(song.id) { vm.refreshStatuses(listOf(song)) }
     return buildList {
-        add(GlassMenuItem("song_like_${song.id}", "喜欢 / 取消喜欢", enabled = !status.pending && !song.video,
+        add(GlassMenuItem("song_like_${song.id}", "喜欢 / 取消喜欢", enabled = !song.video,
             onClick = { vm.togglePrimaryLike(song) }))
         add(GlassMenuItem("song_playlist_${song.id}", "加入歌单", onClick = { vm.choosePlaylist(song) }))
-        if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME) {
-            add(GlassMenuItem("song_navidrome", "打开 Navidrome 曲库", onClick = { navigate("navidrome") }))
-            return@buildList
-        }
         if (song.artistIds.isNotEmpty()) song.artistIds.forEachIndexed { index, id ->
             add(GlassMenuItem("song_artist_$id", "歌手 · ${song.artists.split(" / ").getOrNull(index).orEmpty()}",
                 onClick = { navigate("lib/artist/$id") }))
@@ -149,14 +142,13 @@ fun catalogRoute(album: Boolean, query: String = "") = "lib/browse/${if (album) 
     navigate: (String) -> Unit, play: (List<Song>, Int) -> Unit, playMv: (MvDto) -> Unit, deleted: () -> Unit,
     onDialogActive: (Boolean) -> Unit = {}) {
     val state by vm.state.collectAsPageState()
-    val account by vm.container.accountRepository.state.collectAsStateWithLifecycle()
     val busy by library.busy.collectAsStateWithLifecycle()
     val playbackMode by vm.playbackMode.collectAsStateWithLifecycle()
     val roomRequest = LocalRoomSongRequest.current
     var rename by rememberSaveable { mutableStateOf(false) }
     var delete by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
-    val editable = vm.editable(state.playlist, account.account?.id ?: 0)
+    val editable = vm.editable(state.playlist, 0)
     LaunchedEffect(state.songs) { library.refreshSearchLikes(state.songs) }
     LaunchedEffect(state.refreshError) { state.refreshError?.let { library.container.errorNotices.show("刷新失败，已保留原列表：$it") } }
     // NavDisplay resumes the destination after the transition. Visible rows request their own art.

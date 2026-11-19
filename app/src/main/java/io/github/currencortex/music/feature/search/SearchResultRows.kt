@@ -186,7 +186,6 @@ internal fun lyricMatchWindow(text: String, query: String, limit: Int = 24): Str
 
 /** Reuses the selected heart destination and the existing playlist picker. */
 @Composable internal fun SearchResultLibraryActions(vm: LibraryViewModel, song: Song, showLike: Boolean = true) {
-    val statuses by vm.statuses.collectAsStateWithLifecycle()
     val nativeLikes by vm.container.neteaseSongActions.likedState.collectAsStateWithLifecycle()
     val qqLikes by vm.container.qqMusic.likedState.collectAsStateWithLifecycle()
     val qqKnownLikes by vm.container.qqMusic.knownLikeState.collectAsStateWithLifecycle()
@@ -197,19 +196,17 @@ internal fun lyricMatchWindow(text: String, query: String, limit: Int = 24): Str
         song.musicSource == MusicSource.QQ_MUSIC -> song.id in qqLikes
         song.musicSource == MusicSource.NETEASE ->
             io.github.currencortex.music.data.song.NeteaseSongActionsRepository.songId(song) in nativeLikes
-        else -> statuses[song.id]?.liked == true
+        else -> false
     }
     if (showLike) {
         val qqStateUnknown = song.musicSource == MusicSource.QQ_MUSIC && qqAccount.loggedIn &&
             song.id !in qqKnownLikes
-        val pending = song.musicSource !in setOf(MusicSource.QQ_MUSIC, MusicSource.NETEASE) &&
-            statuses[song.id]?.pending == true
         SearchResultIconAction(if (liked) Icons.Default.Favorite else MusicIcons.Heart,
             if (liked) "取消喜欢：${song.name}" else "喜欢：${song.name}",
             Modifier.testTag("search_like_${song.id}").semantics { stateDescription = if (liked) "已喜欢" else "未喜欢" },
-            enabled = !liking && !pending, accent = liked, grouped = true) {
+            enabled = !liking, accent = liked, grouped = true) {
                 vm.togglePrimaryLike(song, desiredLiked = true.takeIf { qqStateUnknown })
-            }
+        }
     }
     SearchResultIconAction(playlistAddIcon, "加入歌单：${song.name}", Modifier.testTag("search_playlist_${song.id}"),
         enabled = !busy, grouped = true) { vm.choosePlaylist(song) }

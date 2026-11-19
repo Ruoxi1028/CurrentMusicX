@@ -1,7 +1,7 @@
 package io.github.currencortex.music.feature.listening
 
 import io.github.currencortex.music.data.netease.listening.*
-import io.github.currencortex.music.data.profile.listeningDuration
+import io.github.currencortex.music.core.media.listeningDuration
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import java.time.Instant

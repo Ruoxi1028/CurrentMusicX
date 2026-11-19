@@ -20,10 +20,10 @@ import io.github.currencortex.music.AppContainer
 import io.github.currencortex.music.core.network.AppResult
 import io.github.currencortex.music.core.network.appResult
 import io.github.currencortex.music.data.style.MusicStyle
-import io.github.currencortex.music.feature.profile.ProfileDestination
 import io.github.currencortex.music.feature.style.MusicStyleCategories
 import io.github.currencortex.music.feature.style.StyleCatalogState
 import io.github.currencortex.music.ui.component.LocalMusicBottomInset
+import io.github.currencortex.music.ui.component.MusicDestinationRow
 import io.github.currencortex.music.ui.component.MusicIcons
 import io.github.currencortex.music.ui.component.nativeui.SettingsDivider
 import io.github.currencortex.music.ui.component.nativeui.SettingsGroup
@@ -32,6 +32,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+/** A labelled navigation row used by the QQ discover page. */
+@Composable
+private fun ProfileDestination(title: String, summary: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tag: String, onClick: () -> Unit) {
+    MusicDestinationRow(title, onClick, Modifier.testTag(tag), summary = summary)
+}
 
 /**
  * QQ supplies the music catalog while the standard Discover shell continues to own
