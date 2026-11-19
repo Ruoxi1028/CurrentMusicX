@@ -241,8 +241,14 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             bodianVault.write(io.github.currencortex.music.core.network.ApiJson.encodeToString(
                 io.github.currencortex.music.data.bodian.BodianAccountState.serializer(), saved))
         } })
+    private val qishuiVault = SecureTokenStore(context, ".qishui$storageSuffix")
+    val qishui = io.github.currencortex.music.data.qishui.QishuiRepository(
+        persist = { saved -> appScope.launch {
+            qishuiVault.write(io.github.currencortex.music.core.network.ApiJson.encodeToString(
+                io.github.currencortex.music.data.qishui.QishuiAccountState.serializer(), saved))
+        } })
     val musicRepository = MusicRepository(apiClient, navidrome = navidrome, qqMusic = qqMusic, kugou = kugou,
-        bodian = bodian)
+        bodian = bodian, qishui = qishui)
     internal fun qqAudioIdentity(): String = qqMusic.audioIdentity
     /** folia-style provider account hub: the app logs into music platforms, not into itself. */
     val providerHub = io.github.currencortex.music.feature.provider.ProviderAccountHub(
@@ -276,6 +282,9 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
             return AudioRequest(song.id, quality, 0L,
                 RequestSession("https://bd-api.kuwo.cn/", bodian.state.value.uid.takeIf { bodian.state.value.loggedIn },
                     bodian.state.value.revision), "bodian", song)
+        if (song.musicSource == io.github.currencortex.music.data.song.MusicSource.QISHUI)
+            return AudioRequest(song.id, quality, 0L,
+                RequestSession("https://open.douyin.com/", null, qishui.state.value.revision), "qishui", song)
         if (song.neteaseCloud) {
             val owner = neteaseSessions.state.value
             return AudioRequest(song.id, quality, owner.profile?.uid ?: 0L,
@@ -319,6 +328,8 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
         } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.BODIAN }?.let {
             val account = bodian.state.value
             request.session == RequestSession("https://bd-api.kuwo.cn/", account.uid.takeIf { account.loggedIn }, account.revision)
+        } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.QISHUI }?.let {
+            request.session == RequestSession("https://open.douyin.com/", null, qishui.state.value.revision)
         } ?: request.song?.takeIf { it.musicSource == io.github.currencortex.music.data.song.MusicSource.NAVIDROME }?.let {
             navidrome.accepts(it) && request.session == navidrome.session() && request.providerIdentity == "navidrome:" + navidrome.state.value.identity
         } ?: request.song?.takeIf { it.neteaseCloud }?.let {
@@ -646,6 +657,18 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 }
             }
         }
+        playerScope.launch {
+            sessionRestored.await()
+            var revision = qishui.state.value.revision
+            qishui.state.collect {
+                if (it.revision != revision) {
+                    revision = it.revision
+                    audioSources.invalidate()
+                    if (playbackQueue.state.value.current?.musicSource == io.github.currencortex.music.data.song.MusicSource.QISHUI)
+                        playerController.pause()
+                }
+            }
+        }
         appScope.launch {
             storageSettings.limitBytes.collect { bytes ->
                 try { audioCache.setMaxBytes(bytes) }
@@ -687,6 +710,16 @@ class AppContainer(context: Context, storageNamespace: String = "", externalPlay
                 }.getOrNull().let { saved ->
                     runCatching {
                         bodian.restore(saved ?: io.github.currencortex.music.data.bodian.BodianAccountState())
+                    }
+                }
+                runCatching {
+                    qishuiVault.read()?.takeIf(String::isNotBlank)?.let { raw ->
+                        io.github.currencortex.music.core.network.ApiJson
+                            .decodeFromString(io.github.currencortex.music.data.qishui.QishuiAccountState.serializer(), raw)
+                    }
+                }.getOrNull().let { saved ->
+                    runCatching {
+                        qishui.restore(saved ?: io.github.currencortex.music.data.qishui.QishuiAccountState())
                     }
                 }
                 ready.complete(Unit)

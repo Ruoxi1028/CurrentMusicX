@@ -91,6 +91,9 @@ fun ProviderAccountScreen(
                 SettingsDivider()
                 MusicDestinationRow("波点音乐", { navigate("bodian/search") },
                     Modifier.testTag("provider_bodian"), summary = "搜索并播放波点曲库")
+                SettingsDivider()
+                MusicDestinationRow("汽水音乐", { navigate("qishui/search") },
+                    Modifier.testTag("provider_qishui"), summary = "免登录搜索，播放平台明文音源")
                 if (navidrome.configured) {
                     SettingsDivider()
                     MusicDestinationRow("Navidrome", { navigate("navidrome") },

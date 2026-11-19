@@ -12,7 +12,8 @@ import kotlinx.serialization.SerialName
                               val albumId: Long = 0, val translatedName: String = "",
                               val aliases: List<String> = emptyList(), val neteaseCloud: Boolean = false,
                               val qqMusic: QqMusicTrackRef? = null, val kugouHash: String = "",
-                              val bodianId: String = "", val bodianFreeSign: String = "") {
+                              val bodianId: String = "", val bodianFreeSign: String = "",
+                              val qishuiId: String = "") {
     val privateLibrary get() = musicSource == MusicSource.NAVIDROME
     val privateIdentity get() = navidrome?.identity
     val originalQualityLabel get() = "Navidrome 原音质"
@@ -21,7 +22,7 @@ import kotlinx.serialization.SerialName
         .filter { it.isNotBlank() && !it.equals(name, ignoreCase = true) }.distinct()
     val displayNames get() = listOf(name) + alternateNames
 }
-@Serializable enum class MusicSource { NETEASE, QQ_MUSIC, APPLE_MUSIC, SPOTIFY, NAVIDROME, LOCAL, KUGOU, BODIAN }
+@Serializable enum class MusicSource { NETEASE, QQ_MUSIC, APPLE_MUSIC, SPOTIFY, NAVIDROME, LOCAL, KUGOU, BODIAN, QISHUI }
 @Serializable data class QqMusicTrackRef(val mid: String, val songId: Long = 0, val albumMid: String = "",
     val singerMids: List<String> = emptyList(), val mediaMid: String = "")
 @Serializable data class NavidromeTrackRef(val id: String, val identity: String, val format: String = "",

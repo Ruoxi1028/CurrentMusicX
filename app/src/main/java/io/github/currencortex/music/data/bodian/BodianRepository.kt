@@ -27,8 +27,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /** Bodian (波点音乐) account, ported from folia's bodian-music-api transport. */
 @kotlinx.serialization.Serializable
@@ -124,7 +126,7 @@ class BodianRepository(
             call("/api/ucenter/users/login", body = buildJsonObject {
                 put("authType", 10)
                 put("qrCode", key)
-            }, signed = true, anonymous = true)
+            }, signed = true, anonymous = true, method = "POST")
         } catch (error: ApiException) {
             // 11027 means the code was scanned but not confirmed yet.
             if (error.status == 11027) return 802
@@ -235,7 +237,7 @@ class BodianRepository(
 
     private suspend fun call(path: String, params: Map<String, String> = emptyMap(),
         body: JsonObject? = null, signed: Boolean = false, anonymous: Boolean = false,
-        withBody: Boolean = false): JsonObject = withContext(Dispatchers.IO) {
+        withBody: Boolean = false, method: String = "GET"): JsonObject = withContext(Dispatchers.IO) {
         require(path.startsWith("/") && !path.contains("..") && !path.contains("//"))
         val account = mutable.value
         val query = LinkedHashMap<String, String>()
@@ -255,8 +257,11 @@ class BodianRepository(
             headers["uid"] = account.uid
             headers["token"] = account.token
         }
-        val raw = if (withBody) getWithBody(path + "?" + queryText, headers, bodyText)
-        else get("$API_ORIGIN$path?$queryText", headers)
+        val raw = when {
+            method.equals("POST", true) -> post("$API_ORIGIN$path?$queryText", headers, bodyText)
+            withBody -> getWithBody(path + "?" + queryText, headers, bodyText)
+            else -> get("$API_ORIGIN$path?$queryText", headers)
+        }
         val json = runCatching { ApiJson.parseToJsonElement(raw).jsonObject }
             .getOrElse { throw ApiException(ErrorKind.Parse, userMessage = "波点接口返回格式异常") }
         val code = json.int("code") ?: -1
@@ -292,6 +297,20 @@ class BodianRepository(
             headers.forEach { (key, value) -> header(key, value) }
             header("Accept-Encoding", "identity")
         }.get().build()
+        client.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw ApiException(ErrorKind.Server, response.code, "波点接口错误（HTTP ${response.code}）")
+            return raw
+        }
+    }
+
+    private fun post(url: String, headers: Map<String, String>, body: String): String {
+        val parsed = url.toHttpUrl()
+        require(parsed.scheme == "https" && parsed.host == API_HOST)
+        val request = Request.Builder().url(parsed).apply {
+            headers.forEach { (key, value) -> header(key, value) }
+            header("Accept-Encoding", "identity")
+        }.post(body.toByteArray(Charsets.UTF_8).toRequestBody("application/json".toMediaType())).build()
         client.newCall(request).execute().use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw ApiException(ErrorKind.Server, response.code, "波点接口错误（HTTP ${response.code}）")

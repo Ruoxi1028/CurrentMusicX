@@ -16,7 +16,8 @@ class MusicRepository(private val api: ApiClient,
     private val navidrome: io.github.currencortex.music.data.navidrome.NavidromeRepository? = null,
     private val qqMusic: io.github.currencortex.music.data.qqmusic.QqMusicRepository? = null,
     private val kugou: io.github.currencortex.music.data.kugou.KugouRepository? = null,
-    private val bodian: io.github.currencortex.music.data.bodian.BodianRepository? = null) {
+    private val bodian: io.github.currencortex.music.data.bodian.BodianRepository? = null,
+    private val qishui: io.github.currencortex.music.data.qishui.QishuiRepository? = null) {
     val insights = SongInsightsRepository(api)
     suspend fun previewClip(song: Song): SongPreviewClip {
         val id = NeteaseSongActionsRepository.songId(song)
@@ -45,6 +46,8 @@ class MusicRepository(private val api: ApiClient,
             return requireNotNull(kugou).audioSource(song.kugouHash, quality)
         if (song.musicSource == MusicSource.BODIAN)
             return requireNotNull(bodian).audioSource(song.bodianId, song.bodianFreeSign, quality)
+        if (song.musicSource == MusicSource.QISHUI)
+            return requireNotNull(qishui).audioSource(song.qishuiId, quality)
         if (song.neteaseCloud) return source(song.id, quality, session, refresh, supportsDolby, nativeCloud = true)
         return source(song.id, quality, session, refresh, supportsDolby)
     }

@@ -188,6 +188,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     val qqSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC
     val kugouSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.KUGOU
     val bodianSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.BODIAN
+    val qishuiSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.QISHUI
     val lyricsFont = io.github.currencortex.music.feature.lyrics.ui.rememberLyricsFont(lyricsFontSettings)
     AppRefreshRateRequest(settings.refreshRate)
     val settingsVm: SettingsViewModel = viewModel(factory = viewModelFactory { SettingsViewModel(container.settings) })
@@ -608,6 +609,9 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                                     io.github.currencortex.music.feature.bodian.BodianHomeScreen(container,
                                         onAccount = { navigateLibrary("bodian/account") },
                                         play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
+                                else if (qishuiSelected)
+                                    io.github.currencortex.music.feature.qishui.QishuiHomeScreen(container,
+                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
                                 else if (navidromeAccount.configured && navidromeAccount.home)
                                     io.github.currencortex.music.feature.navidrome.NavidromeScreen(navidromeVm, libraryVm, ::navigateLibrary,
                                         { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, root = true)
@@ -773,6 +777,11 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                             else -> io.github.currencortex.music.feature.bodian.BodianSearchScreen(container, ::navigateBack,
                                 onAccount = { navigateLibrary("bodian/account") })
                         }
+                    }
+                }
+                backStack.filter { it.startsWith("qishui/") }.distinct().forEach { route ->
+                    entry(route) {
+                        io.github.currencortex.music.feature.qishui.QishuiSearchScreen(container, ::navigateBack)
                     }
                 }
                 backStack.filter { it.startsWith("qq/") }.distinct().forEach { route ->

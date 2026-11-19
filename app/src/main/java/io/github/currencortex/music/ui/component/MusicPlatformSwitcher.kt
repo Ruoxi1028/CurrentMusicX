@@ -196,4 +196,5 @@ private fun platformIcon(platform: MusicPlatform): Int = when (platform) {
     MusicPlatform.QQ_MUSIC -> R.drawable.ic_platform_qq_music
     MusicPlatform.KUGOU -> R.drawable.ic_platform_kugou
     MusicPlatform.BODIAN -> R.drawable.ic_platform_bodian
+    MusicPlatform.QISHUI -> R.drawable.ic_platform_qishui
 }
