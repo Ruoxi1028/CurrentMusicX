@@ -43,7 +43,10 @@ fun ProviderAccountScreen(
     SettingsPage("我的", "provider_account") {
         item("accounts") {
             SettingsSection("音乐平台账号", MusicIcons.Account) {
-                snapshot.providers.forEach { provider ->
+                val providers = snapshot.providers.filter {
+                    it.providerId == OnlineProviderId.NETEASE || it.providerId == OnlineProviderId.QQ
+                }
+                providers.forEachIndexed { index, provider ->
                     SettingsPreference(provider.label,
                         if (provider.loggedIn) provider.nickname.ifBlank { "已登录" } else "未登录 · 点击扫码登录",
                         Modifier.testTag("provider_${provider.providerId.id}"),
@@ -55,7 +58,7 @@ fun ProviderAccountScreen(
                                 OnlineProviderId.BODIAN -> "bodian/account"
                             })
                         })
-                    if (provider != snapshot.providers.last()) SettingsDivider()
+                    if (index < providers.lastIndex) SettingsDivider()
                 }
             }
         }
@@ -84,21 +87,10 @@ fun ProviderAccountScreen(
                 }
             }
         }
-        item("sources") {
+        if (navidrome.configured) item("sources") {
             SettingsSection("曲库", MusicIcons.Storage) {
-                MusicDestinationRow("酷狗音乐", { navigate("kugou/search") },
-                    Modifier.testTag("provider_kugou"), summary = "搜索并播放酷狗曲库")
-                SettingsDivider()
-                MusicDestinationRow("波点音乐", { navigate("bodian/search") },
-                    Modifier.testTag("provider_bodian"), summary = "搜索并播放波点曲库")
-                SettingsDivider()
-                MusicDestinationRow("汽水音乐", { navigate("qishui/search") },
-                    Modifier.testTag("provider_qishui"), summary = "免登录搜索，播放平台明文音源")
-                if (navidrome.configured) {
-                    SettingsDivider()
-                    MusicDestinationRow("Navidrome", { navigate("navidrome") },
-                        Modifier.testTag("provider_navidrome"), summary = "自己的音乐服务器 · Subsonic")
-                }
+                MusicDestinationRow("Navidrome", { navigate("navidrome") },
+                    Modifier.testTag("provider_navidrome"), summary = "自己的音乐服务器 · Subsonic")
             }
         }
         item("settings") {

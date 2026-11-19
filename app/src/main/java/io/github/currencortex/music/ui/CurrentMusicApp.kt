@@ -186,9 +186,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     val settings by container.settings.state.collectAsStateWithLifecycle()
     val lyricsFontSettings by container.musicSettings.state.collectAsStateWithLifecycle()
     val qqSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.QQ_MUSIC
-    val kugouSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.KUGOU
-    val bodianSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.BODIAN
-    val qishuiSelected = lyricsFontSettings.musicPlatform == io.github.currencortex.music.data.settings.MusicPlatform.QISHUI
     val lyricsFont = io.github.currencortex.music.feature.lyrics.ui.rememberLyricsFont(lyricsFontSettings)
     AppRefreshRateRequest(settings.refreshRate)
     val settingsVm: SettingsViewModel = viewModel(factory = viewModelFactory { SettingsViewModel(container.settings) })
@@ -601,17 +598,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                                             val query = searchVm.state.value.query
                                             if (query.isNotBlank()) { searchVm.search(query); searchFocus = false }
                                         })
-                                else if (kugouSelected)
-                                    io.github.currencortex.music.feature.kugou.KugouHomeScreen(container,
-                                        onAccount = { navigateLibrary("kugou/account") },
-                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
-                                else if (bodianSelected)
-                                    io.github.currencortex.music.feature.bodian.BodianHomeScreen(container,
-                                        onAccount = { navigateLibrary("bodian/account") },
-                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
-                                else if (qishuiSelected)
-                                    io.github.currencortex.music.feature.qishui.QishuiHomeScreen(container,
-                                        play = { songs, index -> playWithPermission { container.playerController.playList(songs, index) } })
                                 else if (navidromeAccount.configured && navidromeAccount.home)
                                     io.github.currencortex.music.feature.navidrome.NavidromeScreen(navidromeVm, libraryVm, ::navigateLibrary,
                                         { songs, index -> playWithPermission { container.playerController.playList(songs, index) } }, root = true)

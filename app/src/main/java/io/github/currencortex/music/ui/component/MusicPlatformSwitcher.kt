@@ -81,11 +81,15 @@ fun MusicPlatformSwitcher(
     val position = reveal * (1f - progress)
     val scroll = rememberScrollState()
     val alternatives = remember(platform) {
-        // Only platforms that can actually resolve audio are listed. Placeholder
-        // logos without a provider read as broken, non-switchable controls.
         MusicPlatform.entries.filter { it != platform }.map {
             PlatformOption(it.label, platformIcon(it), it.name, it)
-        }
+        } + listOf(
+            PlatformOption("酷狗音乐", R.drawable.ic_platform_kugou, "KUGOU"),
+            PlatformOption("汽水音乐", R.drawable.ic_platform_qishui, "QISHUI"),
+            PlatformOption("波点音乐", R.drawable.ic_platform_bodian, "BODIAN"),
+            PlatformOption("Spotify", R.drawable.ic_platform_spotify, "SPOTIFY"),
+            PlatformOption("YouTube Music", R.drawable.ic_platform_youtube_music, "YOUTUBE_MUSIC"),
+        )
     }
 
     BackHandler(enabled = expanded && active && !switching) { expanded = false }
@@ -194,7 +198,4 @@ private fun MusicPlatformIcon(icon: Int, enabled: Boolean = true) {
 private fun platformIcon(platform: MusicPlatform): Int = when (platform) {
     MusicPlatform.NETEASE -> R.drawable.ic_platform_netease
     MusicPlatform.QQ_MUSIC -> R.drawable.ic_platform_qq_music
-    MusicPlatform.KUGOU -> R.drawable.ic_platform_kugou
-    MusicPlatform.BODIAN -> R.drawable.ic_platform_bodian
-    MusicPlatform.QISHUI -> R.drawable.ic_platform_qishui
 }
