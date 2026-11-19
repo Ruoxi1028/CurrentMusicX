@@ -67,7 +67,7 @@ Navidrome 自建曲库。
 - `ApiClient` 移除账号令牌、`requiresAccount`、`serverAudioSource` 等账号分支；
   `ncmbind/qr|phone` 等登录路由改由本机网易云网关应答
 - `BindingRepository` 移除云端绑定同步，只保留本机扫码/验证码登录、状态、会员与勋章
-- 「音源与网络」页只保留歌词来源、CurrentMusic 服务器线路与 Navidrome 自建曲库
+- 「音源与网络」页只保留歌词来源与 Navidrome 自建曲库（CurrentMusic 服务器线路已在 v1.0.0 删除）
 
 ## 三、验证
 
@@ -76,3 +76,26 @@ Navidrome 自建曲库。
 - 全部 `io.github.currencortex.music.*` 导入可解析；无任何已删除符号的残留引用
 - 未改动 `Room` 数据库结构；`Song` 移除字段均为带默认值的可序列化字段，
   `ApiJson` 配置了 `ignoreUnknownKeys`，旧队列快照可正常解码
+
+## 四、v1.0.0 当前实现范围与未实现
+
+### 已实现
+
+- 网易云音乐：扫码 / 手机验证码登录，搜索、每日推荐、歌单、收藏与播放
+- QQ 音乐：扫码登录，搜索、推荐、歌单、收藏与播放
+- Navidrome 自建曲库（Subsonic）与本地音乐
+- 歌词来源选择、音效与播放设置
+- 检查更新指向 `Ruoxi1028/CurrentMusicX` 的 GitHub Releases
+
+### 未实现 / 当前不可用
+
+- **酷狗音乐、波点音乐、汽水音乐**：Provider 代码已移植，但 v1.0.0 关闭了入口；
+  平台切换器中仅显示灰色占位图标，无法登录或播放
+- **Spotify、YouTube Music**：未实现。Spotify 完整播放受 Widevine DRM 与 Premium/SDK
+  限制；YouTube Music 需要 InnerTube 与可用代理，当前网络环境下不可用；两者均为灰色占位
+- **CurrentMusic 自有账号与社区**：注册/登录、2FA、通行密钥、动态、帖子、聊天、
+  发现用户、等级、头像挂件、管理面板、官方捐赠、CurrentMusic 房间等已全部删除
+- **音源配置层**：LX/洛雪脚本、LeiZ API、服务器音源、Emby 与音源选择已全部删除
+- **CurrentMusic 服务器线路设置**：已从设置页删除
+- **CurrentMusic 云绑定同步、站内歌单、听歌上报**：已删除，听歌数据仅保存在本机
+- 本次发布为 Debug 构建，未使用正式签名；安装前需卸载旧正式版

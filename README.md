@@ -8,21 +8,42 @@
 
 **让封面、歌词与音乐一起流动**
 
-网易云 / QQ 音乐 / 酷狗 · Navidrome 自建曲库 · 双人一起听
+网易云 / QQ 音乐 · Navidrome 自建曲库 · 双人一起听
 
 Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 <p>
-  <a href="https://github.com/bileizhen/CurrentMusicX/releases/latest"><img src="https://img.shields.io/github/v/release/bileizhen/CurrentMusicX?style=flat-square&color=1677FF" alt="最新版本"></a>
+  <a href="https://github.com/Ruoxi1028/CurrentMusicX/releases/latest"><img src="https://img.shields.io/github/v/release/Ruoxi1028/CurrentMusicX?style=flat-square&color=1677FF" alt="最新版本"></a>
   <a href="#兼容性"><img src="https://img.shields.io/badge/Android-8.0%2B-1677FF?style=flat-square" alt="Android 8.0 及以上"></a>
   <a href="#开源与致谢"><img src="https://img.shields.io/badge/License-GPL--3.0_%2B_AGPL--3.0-555555?style=flat-square" alt="GPL-3.0 与 AGPL-3.0 组件"></a>
 </p>
 
-**[下载应用](https://github.com/bileizhen/CurrentMusicX/releases/latest)** · [开始使用](#开始使用) · [更新记录](https://github.com/bileizhen/CurrentMusicX/releases) · [反馈问题](https://github.com/bileizhen/CurrentMusicX/issues)
+**[下载应用](https://github.com/Ruoxi1028/CurrentMusicX/releases/latest)** · [开始使用](#开始使用) · [更新记录](https://github.com/Ruoxi1028/CurrentMusicX/releases) · [反馈问题](https://github.com/Ruoxi1028/CurrentMusicX/issues)
 
 </div>
 
 流声音乐（CurrentMusicX）是 [CurrentMusic](https://github.com/backrooms-yrc/CurrentMusic) 的原生 Android 客户端。应用中文显示名为「流声音乐」，英文名仍为 CurrentMusic。圆形封面、动态取色、逐字歌词与悬浮播放器，让音乐库、发现和播放自然衔接，适配竖屏、横屏与宽屏布局。
+
+## 当前版本实现范围（v1.0.0）
+
+本仓库为 [Ruoxi1028/CurrentMusicX](https://github.com/Ruoxi1028/CurrentMusicX)。本版本移除了应用自有账号与音源配置层，账号与播放改为登录音乐平台自身。
+
+### 已实现
+
+- **网易云音乐**：扫码 / 手机验证码登录，搜索、每日推荐、歌单、收藏与播放
+- **QQ 音乐**：扫码登录，搜索、推荐、歌单、收藏与播放
+- **Navidrome 自建曲库**（Subsonic）与**本地音乐**
+- 歌词来源选择（自动 / CurrentMusic / 网易云 / 本地内嵌）、音效与播放设置
+- **检查更新**：指向 `Ruoxi1028/CurrentMusicX` 的 GitHub Releases
+
+### 未实现 / 当前不可用
+
+- **酷狗音乐、波点音乐、汽水音乐**：Provider 代码已移植，但当前版本关闭了入口；平台切换器中仅显示灰色占位图标，无法登录或播放。
+- **Spotify、YouTube Music**：未实现。Spotify 完整播放受 Widevine DRM 与 Premium/SDK 限制；YouTube Music 需要 InnerTube 与可用代理，当前网络环境下无法使用。两者在平台切换器中均为灰色占位。
+- **CurrentMusic 自有账号与社区**：注册/登录、2FA、通行密钥、动态、帖子、聊天、发现用户、等级、头像挂件、管理面板、官方捐赠、CurrentMusic 房间等已全部删除。
+- **音源配置层**：LX/洛雪脚本、LeiZ API、服务器音源、Emby 与音源选择已全部删除。
+- **CurrentMusic 服务器线路设置**：「设置 → 音源与网络 → CurrentMusic 服务」已删除，仅保留歌词来源与 Navidrome。
+- **CurrentMusic 云绑定同步、站内歌单、听歌上报**：已删除；听歌数据仅保存在本机。
 
 ## 界面预览
 
@@ -49,11 +70,11 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 ## 开始使用
 
-1. **下载安装。** 前往 [Releases](https://github.com/bileizhen/CurrentMusicX/releases/latest) 下载 `CurrentMusic-Android-v版本号.apk`，按系统提示安装。同签名正式版可覆盖升级。
-2. **登录音乐平台账号。** 进入「我的 → 音乐平台账号」，扫码登录网易云音乐、QQ 音乐或酷狗音乐。应用不提供自有账号，登录各平台后即可搜索、播放与同步收藏。
+1. **下载安装。** 前往 [Releases](https://github.com/Ruoxi1028/CurrentMusicX/releases/latest) 下载 `CurrentMusicX-folia-refactor-debug.apk`。当前发布为 Debug 构建，与旧正式版签名不同；如已安装旧版，请先卸载再安装。
+2. **登录音乐平台账号。** 进入「我的 → 音乐平台账号」，扫码登录网易云音乐或 QQ 音乐。应用不提供自有账号，登录平台后即可搜索、播放与同步收藏。
 3. **连接音乐库。** 也可在「设置 → 音源与网络 → 自建曲库」连接 Navidrome 自建曲库；歌词来源可在同一页面选择，默认**自动择优：逐字优先，逐行兜底**。
 
-歌曲、音质、会员音效及推荐的可用性，以对应服务和账号权限为准。本页介绍当前 `main` 源码；已发布版本的变化与验收范围见 [GitHub Releases](https://github.com/bileizhen/CurrentMusicX/releases)。
+歌曲、音质、会员音效及推荐的可用性，以对应服务和账号权限为准。本页介绍当前 `main` 源码；已发布版本的变化与验收范围见 [GitHub Releases](https://github.com/Ruoxi1028/CurrentMusicX/releases)。
 
 [功能一览](#功能一览) · [音源与歌词](#音源与歌词) · [项目实现原理](#项目实现原理) · [兼容性](#兼容性) · [常见问题](#常见问题) · [构建与测试](#从源码构建与设备测试) · [参与贡献](#issuespr-与版本发布)
 
@@ -69,11 +90,11 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 ### 自己的音乐库，也能一起听
 
-- **音乐库**：网易云、QQ 音乐与酷狗三平台的每日推荐、我喜欢、歌单、搜索、专辑、歌手、分类歌单和听歌排行；支持在左上角切换平台，并复用同一套界面组件。还支持 Navidrome 自建曲库的专辑与艺术家；支持收藏、搜索和原音质播放。
+- **音乐库**：网易云与 QQ 音乐两平台的每日推荐、我喜欢、歌单、搜索、专辑、歌手、分类歌单和听歌排行；支持在左上角切换平台，并复用同一套界面组件。还支持 Navidrome 自建曲库的专辑与艺术家；支持收藏、搜索和原音质播放。
 - **本地音乐**：进入「本地音乐 → 扫描范围 → 选择文件夹」，只扫描所选目录及子目录，记住所选位置；授权失效时提示重新选择。扫描全机音乐需要显式选择并授予音频权限，修改扫描范围不替换当前播放队列。
 - **发现音乐**：分类搜索、歌词搜歌、候选词、每日推荐、热搜与音乐风格；私人漫游支持默认、熟悉、探索、拼图及动态场景，结束后可恢复原队列。
 - **双人一起听**：网易云一起听邀请与短链接、共享队列、同步切歌与断线恢复；一起听记录、排行、结束报告和缘分报告。
-- **平台账号**：在「我的 → 音乐平台账号」扫码登录网易云音乐、QQ 音乐与酷狗音乐，登录态加密保存在本机，可随时退出；「我的 → 听歌时长」汇总本机与网易云双来源听歌足迹，提供周 / 月 / 年度报告和唱片墙导出。
+- **平台账号**：在「我的 → 音乐平台账号」扫码登录网易云音乐与 QQ 音乐，登录态加密保存在本机，可随时退出；「我的 → 听歌时长」汇总本机与网易云双来源听歌足迹，提供周 / 月 / 年度报告和唱片墙导出。
 
 ### 调成喜欢的样子
 
@@ -107,7 +128,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 <details>
 <summary>音乐库、搜索与一起听说明</summary>
 
-- 音乐平台账号在「我的 → 音乐平台账号」扫码登录：网易云支持扫码与手机验证码，QQ 音乐支持扫码，酷狗音乐支持扫码。登录态加密保存在本机，可随时退出；应用不提供自有账号。
+- 音乐平台账号在「我的 → 音乐平台账号」扫码登录：网易云支持扫码与手机验证码，QQ 音乐支持扫码。登录态加密保存在本机，可随时退出；应用不提供自有账号。
 - 「网易云作为主音乐库」只决定默认音乐库入口；红心始终写入歌曲所属平台（网易云或 QQ 音乐），不再提供站内收藏开关。Navidrome 歌曲使用自己的服务器收藏。
 - 歌单支持搜索、排序、创建与管理，歌单与「我喜欢」页可多选歌曲批量收藏或取消收藏，网易云他人歌单支持收藏订阅；可选 Depth Ribbon 立体缎带或 CD 唱片架浏览；唱片架支持搜索收拢、随机挑歌、高潮片段或整首试听、循环与自动下一首，取消喜欢后可在灵动岛撤销。切换音乐库不会删除原有歌单。
 - 搜索首页支持收起历史、双列推荐词和可横滑的网易云搜索热榜（含 ACG、日语等分类）；输入片段显示候选词，点选直接搜索；「歌词」分类支持输入记得的歌词搜歌，并展示命中的歌词片段。
@@ -120,13 +141,13 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 ## 音源与歌词
 
-歌词来源在「设置 → 音源与网络」选择，切换后会重新加载当前歌词，缓存按来源隔离。音频始终来自音乐平台自身（网易云、QQ 音乐、酷狗直连）或 Navidrome 自建曲库，没有独立的音源配置层。
+歌词来源在「设置 → 音源与网络」选择，切换后会重新加载当前歌词，缓存按来源隔离。音频始终来自音乐平台自身（网易云、QQ 音乐直连）或 Navidrome 自建曲库，没有独立的音源配置层。
 
 ### 音乐从哪里来
 
 | 来源 | 使用方式 |
 | --- | --- |
-| **平台直连（默认）** | 随当前音乐平台由手机直接请求网易云、QQ 音乐或酷狗官方接口；需先在「我的 → 音乐平台账号」扫码登录对应平台 |
+| **平台直连（默认）** | 随当前音乐平台由手机直接请求网易云或 QQ 音乐官方接口；需先在「我的 → 音乐平台账号」扫码登录对应平台 |
 | Navidrome | 在「设置 → 音源与网络 → 自建曲库」连接，音频直接从自己的服务器播放，支持原音质缓存与预加载 |
 
 ### 歌词如何选择
@@ -149,11 +170,13 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 </details>
 
 <details>
-<summary>CurrentMusic 服务器与更新下载线路</summary>
+<summary>更新下载来源</summary>
 
-「设置 → 音源与网络 → CurrentMusic 服务器」提供固定顺序的自动、`music.20110208.xyz` 主站、`cm.bileizhen.top` CDN、`currentmusic.geekertao.com` CDN、`music.ctcehs.com` CDN 和自定义选项，并显示公告接口的响应延迟，不按延迟排序。新安装默认自动，启动时测速选择较快的可用预设线路，也可手动重新检测；已有服务器配置保留原选择。主站和 CDN 切换保留登录，自定义地址独立保存，切换到其他服务器需重新登录。完整接口路径为 `/cm/`。更新下载中的 CurrentMusic 专用源同步跟随自动或手动选择的内置 CDN，探测与后台下载使用同一路由，安装包继续按 GitHub 发布信息校验大小和 SHA-256。
+「设置 → 音源与网络 → CurrentMusic 服务」已在 v1.0.0 中删除，应用不再提供服务器线路选择。
 
-此地址用于 CurrentMusic 歌词、公告与更新下载线路。音乐平台的搜索、歌单、收藏、播放取址与账号登录均直连对应平台；Navidrome 音频直接从自己的服务器播放。
+「设置 → 检查更新」只使用 GitHub 原站与公开镜像下载 `Ruoxi1028/CurrentMusicX` 的 Release 资产；安装包按发布信息校验大小与 SHA-256，探测与后台下载使用同一来源顺序。
+
+</details>
 
 </details>
 
@@ -164,7 +187,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 ### 客户端怎样分流
 
 - **Web 流声屿**默认把搜索、歌曲详情、歌词、播放取址、账号和社区等业务 API 统一发往流声引擎的 `/cm/`。可选 LeiZ 音源会直接请求 LeiZ。云盘分步上传由引擎申请令牌和登记文件，中间的文件数据可直传对象存储。
-- **CurrentMusicX** 由客户端按功能与登录态选择路径。音乐平台（网易云、QQ 音乐、酷狗）的搜索、歌单、收藏、播放取址与扫码登录由手机直连对应平台；CurrentMusic 歌词与公告走引擎。Navidrome 音频直接从自己的服务器播放。
+- **CurrentMusicX** 由客户端按功能与登录态选择路径。音乐平台（网易云、QQ 音乐）的搜索、歌单、收藏、播放取址与扫码登录由手机直连对应平台；CurrentMusic 歌词与公告走引擎。Navidrome 音频直接从自己的服务器播放。
 
 ### 流声引擎怎样处理请求
 
@@ -208,7 +231,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 <details>
 <summary>如何更新？自行构建的包能覆盖官方版吗？</summary>
 
-在「设置 → 检查更新」查看新版本，可调整启动检查、更新渠道和下载来源。启动发现新版本时可先忽略或查看详情；来源列表显示状态与延迟，专用镜像置顶，其余可用来源按延迟排序。后台下载支持取消、重试和换源；默认镜像失败或文件大小、SHA-256 不符时尝试备用源。校验包名与签名后，由 Android 系统确认安装；首次可能需要允许安装未知来源应用。
+在「设置 → 检查更新」查看新版本，可调整启动检查、更新渠道和下载来源。启动发现新版本时可先忽略或查看详情；来源列表显示状态与延迟，可用来源按延迟排序。后台下载支持取消、重试和换源；默认来源失败或文件大小、SHA-256 不符时尝试备用源。校验包名与签名后，由 Android 系统确认安装；首次可能需要允许安装未知来源应用。
 
 自行构建的包若与官方签名不同，无法直接覆盖。开发与设备测试请使用[独立测试包](#从源码构建与设备测试)，与日常安装分开。
 
@@ -217,13 +240,13 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 <details>
 <summary>如何反馈问题？</summary>
 
-请在 [Issues](https://github.com/bileizhen/CurrentMusicX/issues) 提供应用版本、手机型号、Android 版本、复现步骤与现象。可从设置中导出诊断日志，分享前检查并遮挡个人信息。
+请在 [Issues](https://github.com/Ruoxi1028/CurrentMusicX/issues) 提供应用版本、手机型号、Android 版本、复现步骤与现象。可从设置中导出诊断日志，分享前检查并遮挡个人信息。
 
 </details>
 
 ## 隐私与开发
 
-本机音乐平台登录凭据加密保存，服务分别请求网易云、QQ 音乐、酷狗或 Navidrome 接口；音频、MV 与图片从对应服务返回的地址加载，下载文件保存在用户选择的目录。数据用途及保存方式见[隐私说明](PRIVACY.md)。
+本机音乐平台登录凭据加密保存，服务分别请求网易云、QQ 音乐或 Navidrome 接口；音频、MV 与图片从对应服务返回的地址加载，下载文件保存在用户选择的目录。数据用途及保存方式见[隐私说明](PRIVACY.md)。
 
 欢迎提交 Issue 或 Pull Request。请说明解决的问题与实际验证结果，按独立功能或修复拆分提交。
 
@@ -262,9 +285,9 @@ Release 启用 R8 与资源压缩，仍发布一个包含现有 ABI 的通用 AP
 
 ## Issues、PR 与版本发布
 
-使用 [Issue 表单](https://github.com/bileizhen/CurrentMusicX/issues/new/choose)报告问题或提出建议；PR 按[仓库模板](.github/pull_request_template.md)说明变化与验证。完整解决问题时用 `Fixes #编号`，仅关联讨论时用 `Refs #编号`。
+使用 [Issue 表单](https://github.com/Ruoxi1028/CurrentMusicX/issues/new/choose)报告问题或提出建议；PR 按[仓库模板](.github/pull_request_template.md)说明变化与验证。完整解决问题时用 `Fixes #编号`，仅关联讨论时用 `Refs #编号`。
 
-开发流程：**独立功能分支 → PR → CI → 合并 `main`**。一个 PR 对应一个明确改动，功能分支使用 `bileizhen/` 前缀、推送到 `releases`，目标为 `bileizhen/CurrentMusicX:main`。保留原子提交，版本号等发布准备另开最后一个 PR。
+开发流程：**独立功能分支 → PR → CI → 合并 `main`**。一个 PR 对应一个明确改动，功能分支使用 `Ruoxi1028/` 前缀并推送到本仓库，目标为 `Ruoxi1028/CurrentMusicX:main`。保留原子提交，版本号等发布准备另开最后一个 PR。
 
 <details>
 <summary>Issue 分流、过期处理与 PR 检查</summary>
@@ -278,7 +301,7 @@ Release 启用 R8 与资源压缩，仍发布一个包含现有 ABI 的通用 AP
 - 仓库允许对已审查的具体 PR 启用 Auto-merge，仅使用 Merge commit 保留原子提交。合并前需通过 `build` 和 `test`，并满足现有的分支同步与审查要求。
 - PR 合并后由 GitHub 自动删除远端功能分支，PR 记录和提交历史保留。本地分支及 worktree 不自动删除，清理前确认没有未提交或未合并的工作。
 - `Update PR branches` 在主线推进、PR 打开或更新时自动把 `main` 合入落后的非草稿 PR。仅处理无冲突且允许维护者更新的分支，使用精确 head SHA 防止并发覆盖；已同步的分支不重复更新，`bot: skip` 可退出自动处理。工作流只运行主线可信脚本，不检出 PR 代码、不强推、不代替审查或自动批准 CI。使用内置 `GITHUB_TOKEN` 更新后，GitHub 可能要求维护者批准新检查；fork 权限不足、冲突或分支保护阻止更新时会在日志提示，需人工处理。
-- 更新设置提供「正式版 / CI 版」。旧「预发布版」选择自动迁移为 CI；CI 只接收 `vX.Y.Z-ci.N` 的完整签名构建，不接收普通 beta/rc 或 PR Debug 产物。CI 渠道隐藏只返回正式包的 CurrentMusic 专用源，保留 GitHub 和其他代理源，并沿用 SHA-256、大小、包名、版本及签名校验。
+- 更新设置提供「正式版 / CI 版」。旧「预发布版」选择自动迁移为 CI；CI 只接收 `vX.Y.Z-ci.N` 的完整签名构建，不接收普通 beta/rc 或 PR Debug 产物。CI 渠道保留 GitHub 和其他代理源，并沿用 SHA-256、大小、包名、版本及签名校验。
 - `Publish CI build` 只下载 **main 的 Android CI 实际构建、验证并上传**的 `ci-unsigned` 产物，严格绑定上游运行 ID，不再次调用 Gradle 或编译 APK。通过 `ci-signing` GitHub Environment 中的 `SIGNING_KEYSTORE_BASE64`、`SIGNING_STORE_PASSWORD`、`SIGNING_KEY_ALIAS`、`SIGNING_KEY_PASSWORD` 使用现有正式签名。该 Environment 限制 main；签名 job 不向 PR 开放，密钥不入库、不作为产物上传。纯文档或轻量 CI 调整跳过安装包分发；缺少签名则失败，不发布未签名包。
 - CI 通过公开的 GitHub prerelease 附件分发，无需用户提供 Token。版本为 `X.Y.Z-ci.N`，N 来自主线 Android CI 的运行编号；每次使用独立 tag，不覆盖已有附件，不修改最新正式 Release。分发时若主线已前进则跳过过时构建。自动说明标注检查范围，不代替真机验收。
 - Android 安装版本码使用 `基础 versionCode × 100000 + N`，正式版的 N 为 0；后续正式发布必须递增基础 versionCode 和版本号，使它高于上一版本所有 CI。CI 可保留数据覆盖原正式版，但切回正式版须等待后续更高版本，不通过卸载或绕过系统降级检查处理。单个 CI 编号范围 1–99999，超出时构建失败并由维护者迁移编号规则。
