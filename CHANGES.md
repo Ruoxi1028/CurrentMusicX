@@ -14,6 +14,8 @@ Navidrome 自建曲库。
   `PasswordDialog`、`AndroidPasskeyLogin`（通行密钥）
 - `core/network/AuthInterceptor.kt`、`core/network/NativePasskeyRoute.kt`
   （`RequestSession` 已移到 `core/network/RequestSession.kt`）
+- 公告：`data/announcement/`（`AnnouncementRepository`、`AnnouncementPreferences`）、
+  `feature/announcement/`（公告弹窗、公告中心、ViewModel）及启动时公告检查全部删除
 - 随账号一并移除的功能：动态/帖子、公共聊天、发现用户、等级成长、头像挂件、网易云任务中心、
   歌单导入、管理面板、官方捐赠、CurrentMusic 服务器房间、AI 对话、云端绑定同步、
   CurrentMusic 侧听歌上报、CurrentMusic 自建歌单与站内收藏

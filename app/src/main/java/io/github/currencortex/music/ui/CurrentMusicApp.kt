@@ -189,19 +189,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     val lyricsFont = io.github.currencortex.music.feature.lyrics.ui.rememberLyricsFont(lyricsFontSettings)
     AppRefreshRateRequest(settings.refreshRate)
     val settingsVm: SettingsViewModel = viewModel(factory = viewModelFactory { SettingsViewModel(container.settings) })
-    val announcementVm: io.github.currencortex.music.feature.announcement.AnnouncementViewModel =
-        viewModel(factory = viewModelFactory { io.github.currencortex.music.feature.announcement.AnnouncementViewModel(container) })
-    val announcementLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    androidx.compose.runtime.DisposableEffect(announcementVm, announcementLifecycle) {
-        fun update() = announcementVm.setForeground(
-            announcementLifecycle.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ -> update() }
-        announcementLifecycle.lifecycle.addObserver(observer)
-        update()
-        onDispose { announcementLifecycle.lifecycle.removeObserver(observer); announcementVm.setForeground(false) }
-    }
-    val announcements by announcementVm.items.collectAsStateWithLifecycle()
-    val suppressReadAnnouncements by announcementVm.suppressRead.collectAsStateWithLifecycle()
     val updateRequested by container.updates.dialogVisible.collectAsStateWithLifecycle()
     val updatePrompt by container.updates.prompt.collectAsStateWithLifecycle()
     var updateTransitionVisible by remember { mutableStateOf(false) }
@@ -210,7 +197,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
     var showUpdatePreview by rememberSaveable { mutableStateOf(false) }
     val updateDialogVisible = updateRequested || updateTransitionVisible
     val updateTransferState by container.updateTransfer.state.collectAsStateWithLifecycle()
-    val announcementVisible = launchFinished && launchPreview == null && announcements.isNotEmpty() && !updateDialogVisible
 
     // Decide from DataStore directly: the StateFlow's initial value can race the first disk read.
     LaunchedEffect(Unit) {
@@ -490,7 +476,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             avatarFlight.cancel()
             selected = index
         }
-        androidx.activity.compose.BackHandler(enabled = backStack.size == 1 && (selected == SETTINGS_TAB || selected == ME_TAB) && !announcementVisible) {
+        androidx.activity.compose.BackHandler(enabled = backStack.size == 1 && (selected == SETTINGS_TAB || selected == ME_TAB)) {
             selectTab(HOME_TAB)
         }
 
@@ -934,7 +920,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         PlayerSheetHost(open = playerOpen, motion = playerSheetMotion, expansion = playerExpansion,
             origin = playerOrigin, viewport = navigationBounds, artwork = artworkTransition,
             artworkUrl = currentSong?.cover.orEmpty(), predictiveBack = predictiveBack,
-            backEnabled = !playerEffectsPresented && !showLogs && pendingPlay == null && !updateDialogVisible && !announcementVisible &&
+            backEnabled = !playerEffectsPresented && !showLogs && pendingPlay == null && !updateDialogVisible &&
                 !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null &&
                 !roomDialogOpen && songMenu == null && !playerDialogOpen && !miniQueueOpen,
             // Only the tap target that reverses a closing sheet needs the moving dock bounds.
@@ -991,7 +977,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         NavigationBackHandler(
             state = rememberNavigationEventState(NavigationEventInfo.None),
             isBackEnabled = backStack.size > 1 && !playerPresented && !searchCoversScene && !predictiveBack && !showLogs &&
-                pendingPlay == null && !updateDialogVisible && updatePrompt == null && !announcementVisible && !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null && !roomDialogOpen && songMenu == null && downloadSongJson == null && !playerDialogOpen && !miniQueueOpen,
+                pendingPlay == null && !updateDialogVisible && updatePrompt == null && !showScale && launchPreview == null && memberFocus == null && libraryDialogSong == null && !roomDialogOpen && songMenu == null && downloadSongJson == null && !playerDialogOpen && !miniQueueOpen,
             onBackCompleted = ::navigateBack,
         )
         // With predictive back off the page dispatcher is disabled, so the ribbon/shelf
@@ -1005,8 +991,6 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
         ScaleDialog(showScale, settingsVm) { showScale = false }
         MemberDetailDialog(show = memberFocus != null, focus = shownMember, onDismiss = { memberFocus = null })
         LogExportDialog(showLogs, container.logger) { showLogs = false }
-        if (announcementVisible) io.github.currencortex.music.feature.announcement.AnnouncementDialog(announcements,
-            suppressByDefault = suppressReadAnnouncements, onDismiss = announcementVm::dismiss)
         LaunchedEffect(container) {
             if (BuildConfig.UPDATE_DOWNLOAD_EXPERIENCE) {
                 container.desktopLyrics.ready.await()
@@ -1018,7 +1002,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
                 updatePreviewVersion = version
                 launchUpdates()
             })
-        if (!launchBrand.active && !announcementVisible) UpdatePage(container.updates, container.updateTransfer,
+        if (!launchBrand.active) UpdatePage(container.updates, container.updateTransfer,
             currentSong?.cover.orEmpty(), origin = updateLaunchOrigin, onPresentedChanged = { presented ->
                 if (updateTransitionVisible && !presented) updateLaunchOrigin = null
                 updateTransitionVisible = presented
@@ -1048,7 +1032,7 @@ fun CurrentMusicApp(container: AppContainer, animateLaunch: Boolean = false, lau
             MusicDialogButton("继续播放", onClick = { explained = true; val action = pendingPlay; pendingPlay = null; action?.invoke() })
         }
         io.github.currencortex.music.feature.lyrics.desktop.DesktopLyricsRecommendation(container,
-            eligible = launchFinished && announcements.isEmpty() && !updateDialogVisible && pendingPlay == null)
+            eligible = launchFinished && !updateDialogVisible && pendingPlay == null)
         }
         }
         AvatarFlightOverlay(avatarFlight)

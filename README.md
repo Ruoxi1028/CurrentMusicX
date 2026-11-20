@@ -41,6 +41,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 - **酷狗音乐、波点音乐、汽水音乐**：Provider 代码已移植，但当前版本关闭了入口；平台切换器中仅显示灰色占位图标，无法登录或播放。
 - **Spotify、YouTube Music**：未实现。Spotify 完整播放受 Widevine DRM 与 Premium/SDK 限制；YouTube Music 需要 InnerTube 与可用代理，当前网络环境下无法使用。两者在平台切换器中均为灰色占位。
 - **CurrentMusic 自有账号与社区**：注册/登录、2FA、通行密钥、动态、帖子、聊天、发现用户、等级、头像挂件、管理面板、官方捐赠、CurrentMusic 房间等已全部删除。
+- **公告**：启动公告弹窗、公告中心与公告接口已全部删除，应用不再显示任何 CurrentMusic 公告。
 - **音源配置层**：LX/洛雪脚本、LeiZ API、服务器音源、Emby 与音源选择已全部删除。
 - **CurrentMusic 服务器线路设置**：「设置 → 音源与网络 → CurrentMusic 服务」已删除，仅保留歌词来源与 Navidrome。
 - **CurrentMusic 云绑定同步、站内歌单、听歌上报**：已删除；听歌数据仅保存在本机。
