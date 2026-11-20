@@ -24,7 +24,7 @@ Kotlin / Jetpack Compose / Miuix 原生 Android 客户端
 
 流声音乐（CurrentMusicX）是 [CurrentMusic](https://github.com/backrooms-yrc/CurrentMusic) 的原生 Android 客户端。应用中文显示名为「流声音乐」，英文名仍为 CurrentMusic。圆形封面、动态取色、逐字歌词与悬浮播放器，让音乐库、发现和播放自然衔接，适配竖屏、横屏与宽屏布局。
 
-## 当前版本实现范围（v1.0.0）
+## 当前版本实现范围（v1.0.1）
 
 本仓库为 [Ruoxi1028/CurrentMusicX](https://github.com/Ruoxi1028/CurrentMusicX)。本版本移除了应用自有账号与音源配置层，账号与播放改为登录音乐平台自身。
 
